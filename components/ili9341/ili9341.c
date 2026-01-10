@@ -86,13 +86,13 @@ void ili9341_fill_rect(ili9341_t *lcd, uint16_t x, uint16_t y, uint16_t w, uint1
     if ((x + w - 1) >= lcd->width) w = lcd->width - x;
     if ((y + h - 1) >= lcd->height) h = lcd->height - y;
 
-    ESP_LOGI(TAG, "fill_rect: x=%d, y=%d, w=%d, h=%d, color=0x%04X", x, y, w, h, color);
+    // ESP_LOGI(TAG, "fill_rect: x=%d, y=%d, w=%d, h=%d, color=0x%04X", x, y, w, h, color);
 
     ili9341_set_addr_window(lcd, x, y, x + w - 1, y + h - 1);
 
     uint8_t hi = color >> 8;
     uint8_t lo = color & 0xFF;
-    ESP_LOGI(TAG, "Color bytes: hi=0x%02X, lo=0x%02X", hi, lo);
+    // ESP_LOGI(TAG, "Color bytes: hi=0x%02X, lo=0x%02X", hi, lo);
 
     gpio_set_level(lcd->pin_dc, 1); // Режим данных
 
