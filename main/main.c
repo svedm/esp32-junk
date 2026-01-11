@@ -9,12 +9,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "ili9341.h"
 #include "xpt2046.h"
 #include "wifi.h"
 #include "esp_wifi.h"
 #include <string.h>
 #include "bluetooth.h"
+#include "lvgl.h"
 
 static const char *TAG = "ILI9341_DEMO";
 
@@ -509,67 +511,205 @@ static void display_update_task(void *pvParameters)
     }
 }
 
+// Global LCD and touch objects for LVGL
+static ili9341_t lcd;
+static xpt2046_t touch;
+
+// Forward declarations
+static uint32_t my_get_millis(void);
+
+// LVGL flush callback - called when LVGL needs to update the display
+static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *color_p)
+{
+    // Set the drawing window to the area that needs to be updated
+    ili9341_set_addr_window(&lcd, area->x1, area->y1, area->x2, area->y2);
+
+    // Calculate the size of the area
+    uint32_t width = area->x2 - area->x1 + 1;
+    uint32_t height = area->y2 - area->y1 + 1;
+    uint32_t pixel_count = width * height;
+
+    // Swap bytes: LVGL outputs little-endian RGB565, but ILI9341 expects big-endian
+    uint16_t *pixels = (uint16_t *)color_p;
+    for (uint32_t i = 0; i < pixel_count; i++) {
+        pixels[i] = (pixels[i] >> 8) | (pixels[i] << 8);
+    }
+
+    // Send all pixel data
+    ili9341_write_data(&lcd, color_p, pixel_count * 2);
+
+    // Tell LVGL we're done flushing
+    lv_display_flush_ready(disp);
+}
+
+// LVGL touchscreen read callback
+static void lvgl_touchpad_read(lv_indev_t *indev_drv, lv_indev_data_t *data)
+{
+    xpt2046_touch_t touch_data = xpt2046_get_touch(&touch);
+
+    if (touch_data.touched) {
+        data->state = LV_INDEV_STATE_PRESSED;
+        data->point.x = touch_data.x;
+        data->point.y = touch_data.y;
+
+        // Debug: print touch coordinates
+        static uint32_t last_log = 0;
+        uint32_t now = my_get_millis();
+        if (now - last_log > 500) {  // Log every 500ms
+            ESP_LOGI(TAG, "Touch detected: x=%d, y=%d, pressure=%d",
+                     touch_data.x, touch_data.y, touch_data.z);
+            last_log = now;
+        }
+    } else {
+        data->state = LV_INDEV_STATE_RELEASED;
+    }
+}
+
+// Button event handler
+static void button_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Button clicked!");
+    } else if (code == LV_EVENT_PRESSED) {
+        ESP_LOGI(TAG, "Button pressed");
+    } else if (code == LV_EVENT_RELEASED) {
+        ESP_LOGI(TAG, "Button released");
+    }
+}
+
+// Create a simple UI with a button
+static void create_demo_ui(void)
+{
+    // Create a button in the center of the screen
+    lv_obj_t *btn = lv_button_create(lv_screen_active());
+    static lv_style_t btn_style;
+    lv_style_init(&btn_style);
+    lv_style_set_bg_color(&btn_style, lv_color_hex(0xFF0000));
+
+
+    lv_obj_set_size(btn, 120, 50);
+    lv_obj_add_style(btn, &btn_style, 0);
+    lv_obj_align(btn, LV_ALIGN_CENTER, 0, -40);
+    lv_obj_add_event_cb(btn, button_event_handler, LV_EVENT_ALL, NULL);
+
+    // Create a label on the button
+    lv_obj_t *label = lv_label_create(btn);
+    lv_label_set_text(label, "Click Me!");
+    lv_obj_center(label);
+
+    // Create a title label
+    lv_obj_t *title = lv_label_create(lv_screen_active());
+    lv_label_set_text(title, "LVGL + ILI9341 Demo");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
+
+    // Create an info label
+    lv_obj_t *info = lv_label_create(lv_screen_active());
+    lv_label_set_text(info, "Touch the button!");
+    lv_obj_align(info, LV_ALIGN_CENTER, 0, 40);
+}
+
+// Custom tick callback for LVGL - returns milliseconds since boot
+static uint32_t my_get_millis(void)
+{
+    return (uint32_t)(esp_timer_get_time() / 1000);
+}
+
+// LVGL task that handles the timer and events
+static void lvgl_task(void *pvParameter)
+{
+    ESP_LOGI(TAG, "LVGL task started");
+
+    while (1) {
+        // Handle LVGL tasks - this processes all widgets, animations, input devices, etc.
+        uint32_t time_till_next = lv_timer_handler();
+
+        // Give other tasks a chance to run
+        taskYIELD();
+
+        // Sleep for the time until next timer needs to be run, but at least 5ms
+        uint32_t sleep_ms = (time_till_next > 5) ? 5 : time_till_next;
+        if (sleep_ms > 0) {
+            vTaskDelay(pdMS_TO_TICKS(sleep_ms));
+        }
+    }
+}
+
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Starting ILI9341 LCD Demo with touchscreen support");
+    ESP_LOGI(TAG, "Starting LVGL Demo with ILI9341 and XPT2046");
     ESP_LOGI(TAG, "LCD Pin configuration: MOSI=%d, CLK=%d, CS=%d, DC=%d, RST=%d, BCKL=%d",
              PIN_NUM_MOSI, PIN_NUM_CLK, PIN_NUM_CS, PIN_NUM_DC, PIN_NUM_RST, PIN_NUM_BCKL);
     ESP_LOGI(TAG, "Touch Pin configuration: MISO=%d, MOSI=%d, CLK=%d, CS=%d, IRQ=%d",
              TOUCH_MISO, TOUCH_MOSI, TOUCH_CLK, TOUCH_CS, TOUCH_IRQ);
 
-    // Create display structure
-    ili9341_t lcd;
-
-    // Initialize display
+    // Initialize ILI9341 LCD
+    ESP_LOGI(TAG, "Initializing ILI9341 LCD...");
     esp_err_t ret = ili9341_init(&lcd, LCD_HOST, PIN_NUM_MOSI, PIN_NUM_CLK,
                                  PIN_NUM_CS, PIN_NUM_DC, PIN_NUM_RST, PIN_NUM_BCKL);
-
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize ILI9341: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Failed to initialize LCD");
         return;
     }
+    ESP_LOGI(TAG, "LCD initialized successfully");
 
-    ESP_LOGI(TAG, "LCD initialized successfully!");
-
-    // Turn on backlight
+     // Turn on backlight
     ili9341_backlight(&lcd, true);
     ESP_LOGI(TAG, "Backlight ON");
 
-    // Initialize touchscreen
-    xpt2046_t touch;
+    // Initialize XPT2046 touchscreen
+    ESP_LOGI(TAG, "Initializing XPT2046 touchscreen...");
     ret = xpt2046_init(&touch, TOUCH_HOST, TOUCH_MISO, TOUCH_MOSI, TOUCH_CLK,
                        TOUCH_CS, TOUCH_IRQ, 240, 320);
-
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize XPT2046: %s", esp_err_to_name(ret));
-        draw_text_demo(&lcd, NULL);
+        ESP_LOGE(TAG, "Failed to initialize touchscreen");
         return;
     }
 
-    ESP_LOGI(TAG, "Touchscreen initialized successfully!");
-
-    // calibrate_touchscreen(&lcd, &touch);
-
     xpt2046_set_calibration(&touch, 315, 1784, 237, 1825);
     xpt2046_set_transform(&touch, false, true, false);  // Invert Y
+    ESP_LOGI(TAG, "Touchscreen initialized successfully");
 
-    // draw_text_demo(&lcd, &touch);
-    setup_nvs();
+    // Initialize LVGL
+    ESP_LOGI(TAG, "Initializing LVGL...");
+    lv_init();
 
-    // Initialize BLE
-    ESP_LOGI(TAG, "Initializing BLE...");
-    setup_bluetooth();
+    // Set custom tick callback to get system time in milliseconds
+    lv_tick_set_cb(my_get_millis);
 
-    // Start BLE scanning task
-    ESP_LOGI(TAG, "Starting BLE scan task...");
-    start_ble_scan_task();
+    // Create LVGL display object
+    lv_display_t *display = lv_display_create(240, 320);
 
-    // Start display update task
-    ESP_LOGI(TAG, "Starting display update task...");
-    xTaskCreate(display_update_task, "display_update", 4096, &lcd, 5, NULL);
+    // Set up the display buffer (1/6 of screen size for faster rendering)
+    static uint8_t buf[240 * 320 / 6 * 2];
+    lv_display_set_buffers(display, buf, NULL, sizeof(buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-    // Main loop - can be used for other tasks or removed
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(10000));
-    }
+    // Set the flush callback
+    lv_display_set_flush_cb(display, lvgl_flush_cb);
+
+    // Set color format to RGB565
+    // Note: Our ILI9341 driver is configured for RGB order (MADCTL=0x40)
+    lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
+
+    ESP_LOGI(TAG, "LVGL display initialized");
+
+    // Create an input device (touchscreen)
+    lv_indev_t *indev = lv_indev_create();
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(indev, lvgl_touchpad_read);
+
+    ESP_LOGI(TAG, "LVGL input device initialized");
+
+    // Create the demo UI
+    create_demo_ui();
+
+    ESP_LOGI(TAG, "Demo UI created");
+
+    // Create LVGL task with larger stack (8KB instead of 4KB)
+    xTaskCreate(lvgl_task, "lvgl_task", 8192, NULL, 5, NULL);
+
+    ESP_LOGI(TAG, "LVGL initialization complete!");
+
+    // Main task can now exit - LVGL task handles everything
 }
