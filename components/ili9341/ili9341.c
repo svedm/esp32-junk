@@ -12,10 +12,10 @@ static const char *TAG = "ILI9341";
 #define LCD_WIDTH  240
 #define LCD_HEIGHT 320
 
-// Отправка команды
+// Send command
 void ili9341_write_command(ili9341_t *lcd, uint8_t cmd)
 {
-    gpio_set_level(lcd->pin_dc, 0); // Режим команды
+    gpio_set_level(lcd->pin_dc, 0); // Command mode
 
     spi_transaction_t t;
     memset(&t, 0, sizeof(t));
@@ -24,12 +24,12 @@ void ili9341_write_command(ili9341_t *lcd, uint8_t cmd)
     spi_device_polling_transmit(lcd->spi, &t);
 }
 
-// Отправка данных
+// Send data
 void ili9341_write_data(ili9341_t *lcd, const uint8_t *data, int len)
 {
     if (len == 0) return;
 
-    gpio_set_level(lcd->pin_dc, 1); // Режим данных
+    gpio_set_level(lcd->pin_dc, 1); // Data mode
 
     spi_transaction_t t;
     memset(&t, 0, sizeof(t));
@@ -38,13 +38,13 @@ void ili9341_write_data(ili9341_t *lcd, const uint8_t *data, int len)
     spi_device_polling_transmit(lcd->spi, &t);
 }
 
-// Отправка одного байта данных
+// Send one byte of data
 void ili9341_write_data_byte(ili9341_t *lcd, uint8_t data)
 {
     ili9341_write_data(lcd, &data, 1);
 }
 
-// Установка окна рисования
+// Set drawing window
 void ili9341_set_addr_window(ili9341_t *lcd, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 {
     ili9341_write_command(lcd, ILI9341_CASET); // Column addr set
@@ -68,7 +68,7 @@ void ili9341_set_addr_window(ili9341_t *lcd, uint16_t x0, uint16_t y0, uint16_t 
     ili9341_write_command(lcd, ILI9341_RAMWR); // write to RAM
 }
 
-// Рисование пикселя
+// Draw pixel
 void ili9341_draw_pixel(ili9341_t *lcd, uint16_t x, uint16_t y, uint16_t color)
 {
     if ((x >= lcd->width) || (y >= lcd->height)) return;
@@ -79,7 +79,7 @@ void ili9341_draw_pixel(ili9341_t *lcd, uint16_t x, uint16_t y, uint16_t color)
     ili9341_write_data(lcd, data, 2);
 }
 
-// Заливка прямоугольника
+// Fill rectangle
 void ili9341_fill_rect(ili9341_t *lcd, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color)
 {
     if ((x >= lcd->width) || (y >= lcd->height)) return;
@@ -94,21 +94,21 @@ void ili9341_fill_rect(ili9341_t *lcd, uint16_t x, uint16_t y, uint16_t w, uint1
     uint8_t lo = color & 0xFF;
     // ESP_LOGI(TAG, "Color bytes: hi=0x%02X, lo=0x%02X", hi, lo);
 
-    gpio_set_level(lcd->pin_dc, 1); // Режим данных
+    gpio_set_level(lcd->pin_dc, 1); // Data mode
 
-    // Отправляем данные построчно для лучшей производительности
+    // Send data line-by-line for better performance
     uint32_t num_pixels = w * h;
 
-    // Создаем буфер для одной строки
+    // Create buffer for one line
     uint8_t *line_buffer = malloc(w * 2);
     if (line_buffer) {
-        // Заполняем буфер строки цветом
+        // Fill line buffer with color
         for (int i = 0; i < w; i++) {
             line_buffer[i * 2] = hi;
             line_buffer[i * 2 + 1] = lo;
         }
 
-        // Отправляем строку h раз
+        // Send line h times
         for (int i = 0; i < h; i++) {
             spi_transaction_t t;
             memset(&t, 0, sizeof(t));
@@ -119,7 +119,7 @@ void ili9341_fill_rect(ili9341_t *lcd, uint16_t x, uint16_t y, uint16_t w, uint1
 
         free(line_buffer);
     } else {
-        // Если не хватило памяти, отправляем попиксельно
+        // If not enough memory, send pixel by pixel
         for (uint32_t i = 0; i < num_pixels; i++) {
             uint8_t data[] = { hi, lo };
             spi_transaction_t t;
@@ -131,13 +131,13 @@ void ili9341_fill_rect(ili9341_t *lcd, uint16_t x, uint16_t y, uint16_t w, uint1
     }
 }
 
-// Заливка всего экрана
+// Fill entire screen
 void ili9341_fill_screen(ili9341_t *lcd, uint16_t color)
 {
     ili9341_fill_rect(lcd, 0, 0, lcd->width, lcd->height, color);
 }
 
-// Управление подсветкой
+// Backlight control
 void ili9341_backlight(ili9341_t *lcd, bool on)
 {
     if (lcd->pin_bckl >= 0) {
@@ -145,7 +145,7 @@ void ili9341_backlight(ili9341_t *lcd, bool on)
     }
 }
 
-// Инициализация дисплея
+// Display initialization
 esp_err_t ili9341_init(ili9341_t *lcd, spi_host_device_t host, int8_t pin_mosi, int8_t pin_clk,
                        int8_t pin_cs, int8_t pin_dc, int8_t pin_rst, int8_t pin_bckl)
 {
@@ -155,7 +155,7 @@ esp_err_t ili9341_init(ili9341_t *lcd, spi_host_device_t host, int8_t pin_mosi, 
     lcd->width = LCD_WIDTH;
     lcd->height = LCD_HEIGHT;
 
-    // Настройка GPIO для DC
+    // GPIO configuration for DC
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << pin_dc),
         .mode = GPIO_MODE_OUTPUT,
@@ -165,20 +165,20 @@ esp_err_t ili9341_init(ili9341_t *lcd, spi_host_device_t host, int8_t pin_mosi, 
     };
     gpio_config(&io_conf);
 
-    // Настройка GPIO для RST
+    // GPIO configuration for RST
     if (pin_rst >= 0) {
         io_conf.pin_bit_mask = (1ULL << pin_rst);
         gpio_config(&io_conf);
     }
 
-    // Настройка GPIO для подсветки
+    // GPIO configuration for backlight
     if (pin_bckl >= 0) {
         io_conf.pin_bit_mask = (1ULL << pin_bckl);
         gpio_config(&io_conf);
-        gpio_set_level(pin_bckl, 0); // Выключаем подсветку
+        gpio_set_level(pin_bckl, 0); // Turn off backlight
     }
 
-    // Инициализация SPI шины
+    // SPI bus initialization
     spi_bus_config_t buscfg = {
         .mosi_io_num = pin_mosi,
         .miso_io_num = -1,
@@ -194,9 +194,9 @@ esp_err_t ili9341_init(ili9341_t *lcd, spi_host_device_t host, int8_t pin_mosi, 
         return ret;
     }
 
-    // Добавление устройства на шину SPI
+    // Add device to SPI bus
     spi_device_interface_config_t devcfg = {
-        .clock_speed_hz = 80 * 1000 * 1000,  // 2 MHz - очень медленно для надежности
+        .clock_speed_hz = 80 * 1000 * 1000,  // 80 MHz
         .mode = 0,
         .spics_io_num = pin_cs,
         .queue_size = 7,
@@ -210,7 +210,7 @@ esp_err_t ili9341_init(ili9341_t *lcd, spi_host_device_t host, int8_t pin_mosi, 
         return ret;
     }
 
-    // Аппаратный сброс
+    // Hardware reset
     if (pin_rst >= 0) {
         gpio_set_level(pin_rst, 0);
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -220,7 +220,7 @@ esp_err_t ili9341_init(ili9341_t *lcd, spi_host_device_t host, int8_t pin_mosi, 
 
     ESP_LOGI(TAG, "Sending init commands (TFT_eSPI compatible)...");
 
-    // Программный сброс
+    // Software reset
     ili9341_write_command(lcd, 0x01); // SWRESET
     vTaskDelay(pdMS_TO_TICKS(5));
 
@@ -332,60 +332,60 @@ esp_err_t ili9341_init(ili9341_t *lcd, spi_host_device_t host, int8_t pin_mosi, 
     return ESP_OK;
 }
 
-// Получение глифа для символа (поддержка ASCII и кириллицы)
+// Get glyph for character (ASCII and Cyrillic support)
 static const uint8_t* get_char_glyph(uint32_t unicode_char, bool *found)
 {
     *found = true;
 
-    // ASCII символы (32-126)
+    // ASCII characters (32-126)
     if (unicode_char >= 32 && unicode_char <= 126) {
         return font5x7_ascii[unicode_char - 32];
     }
 
-    // Кириллица заглавные А-Я (U+0410 - U+042F)
+    // Cyrillic uppercase А-Я (U+0410 - U+042F)
     if (unicode_char >= 0x0410 && unicode_char <= 0x042F) {
         return font5x7_cyrillic_upper[unicode_char - 0x0410];
     }
 
-    // Кириллица строчные а-п (U+0430 - U+043F)
+    // Cyrillic lowercase а-п (U+0430 - U+043F)
     if (unicode_char >= 0x0430 && unicode_char <= 0x043F) {
         return font5x7_cyrillic_lower[unicode_char - 0x0430];
     }
 
-    // Кириллица строчные р-я (U+0440 - U+044F)
+    // Cyrillic lowercase р-я (U+0440 - U+044F)
     if (unicode_char >= 0x0440 && unicode_char <= 0x044F) {
         return font5x7_cyrillic_lower[unicode_char - 0x0440 + 16];
     }
 
-    // Символ не найден - возвращаем пробел
+    // Character not found - return space
     *found = false;
     return font5x7_ascii[0];
 }
 
-// Декодирование UTF-8 в Unicode кодовую точку
+// Decode UTF-8 to Unicode code point
 static uint32_t utf8_decode(const char **str)
 {
     const uint8_t *s = (const uint8_t *)*str;
     uint32_t unicode = 0;
 
     if ((s[0] & 0x80) == 0) {
-        // 1-байтовый символ (ASCII)
+        // 1-byte character (ASCII)
         unicode = s[0];
         *str += 1;
     } else if ((s[0] & 0xE0) == 0xC0) {
-        // 2-байтовый символ
+        // 2-byte character
         unicode = ((s[0] & 0x1F) << 6) | (s[1] & 0x3F);
         *str += 2;
     } else if ((s[0] & 0xF0) == 0xE0) {
-        // 3-байтовый символ
+        // 3-byte character
         unicode = ((s[0] & 0x0F) << 12) | ((s[1] & 0x3F) << 6) | (s[2] & 0x3F);
         *str += 3;
     } else if ((s[0] & 0xF8) == 0xF0) {
-        // 4-байтовый символ
+        // 4-byte character
         unicode = ((s[0] & 0x07) << 18) | ((s[1] & 0x3F) << 12) | ((s[2] & 0x3F) << 6) | (s[3] & 0x3F);
         *str += 4;
     } else {
-        // Неправильная последовательность
+        // Invalid sequence
         unicode = '?';
         *str += 1;
     }
@@ -393,33 +393,33 @@ static uint32_t utf8_decode(const char **str)
     return unicode;
 }
 
-// Отрисовка одного символа Unicode (оптимизированная версия с буферизацией)
+// Draw one Unicode character (optimized version with buffering)
 static void ili9341_draw_char_unicode(ili9341_t *lcd, uint16_t x, uint16_t y, uint32_t unicode_char, uint16_t color, uint16_t bg, uint8_t size)
 {
     if ((x >= lcd->width) || (y >= lcd->height)) return;
 
-    // Получаем глиф символа
+    // Get character glyph
     bool found;
     const uint8_t *glyph = get_char_glyph(unicode_char, &found);
 
-    // Вычисляем размеры символа с учетом масштабирования
+    // Calculate character size with scaling
     uint16_t char_width = FONT_WIDTH * size;
     uint16_t char_height = FONT_HEIGHT * size;
 
-    // Создаем буфер для всего символа
+    // Create buffer for entire character
     uint16_t buffer_size = char_width * char_height;
-    uint16_t *buffer = (uint16_t *)malloc(buffer_size * 2); // 2 байта на пиксель
+    uint16_t *buffer = (uint16_t *)malloc(buffer_size * 2); // 2 bytes per pixel
 
     if (!buffer) {
         ESP_LOGE(TAG, "Failed to allocate buffer for character");
         return;
     }
 
-    // Заполняем буфер
+    // Fill buffer
     uint16_t buf_index = 0;
     for (uint16_t row = 0; row < char_height; row++) {
         for (uint16_t col = 0; col < char_width; col++) {
-            // Определяем, какой пиксель в оригинальном шрифте
+            // Determine which pixel in the original font
             uint8_t orig_col = col / size;
             uint8_t orig_row = row / size;
 
@@ -430,23 +430,23 @@ static void ili9341_draw_char_unicode(ili9341_t *lcd, uint16_t x, uint16_t y, ui
         }
     }
 
-    // Устанавливаем окно для символа
+    // Set window for character
     ili9341_set_addr_window(lcd, x, y, x + char_width - 1, y + char_height - 1);
 
-    // Отправляем весь буфер за один раз
-    gpio_set_level(lcd->pin_dc, 1); // Режим данных
+    // Send entire buffer at once
+    gpio_set_level(lcd->pin_dc, 1); // Data mode
 
-    // Конвертируем буфер в формат big-endian для отправки
+    // Convert buffer to big-endian format for sending
     uint8_t *byte_buffer = (uint8_t *)malloc(buffer_size * 2);
     if (byte_buffer) {
         for (uint16_t i = 0; i < buffer_size; i++) {
-            byte_buffer[i * 2] = buffer[i] >> 8;       // старший байт
-            byte_buffer[i * 2 + 1] = buffer[i] & 0xFF; // младший байт
+            byte_buffer[i * 2] = buffer[i] >> 8;       // high byte
+            byte_buffer[i * 2 + 1] = buffer[i] & 0xFF; // low byte
         }
 
         spi_transaction_t t;
         memset(&t, 0, sizeof(t));
-        t.length = buffer_size * 16; // биты
+        t.length = buffer_size * 16; // bits
         t.tx_buffer = byte_buffer;
         spi_device_polling_transmit(lcd->spi, &t);
 
@@ -456,34 +456,34 @@ static void ili9341_draw_char_unicode(ili9341_t *lcd, uint16_t x, uint16_t y, ui
     free(buffer);
 }
 
-// Обратная совместимость: отрисовка одного ASCII символа
+// Backward compatibility: draw one ASCII character
 void ili9341_draw_char(ili9341_t *lcd, uint16_t x, uint16_t y, char c, uint16_t color, uint16_t bg, uint8_t size)
 {
     ili9341_draw_char_unicode(lcd, x, y, (uint32_t)c, color, bg, size);
 }
 
-// Отрисовка строки с поддержкой UTF-8
+// Draw string with UTF-8 support
 void ili9341_draw_string(ili9341_t *lcd, uint16_t x, uint16_t y, const char *str, uint16_t color, uint16_t bg, uint8_t size)
 {
     uint16_t current_x = x;
 
     while (*str) {
-        // Проверяем, не выходит ли символ за границы экрана
+        // Check if character exceeds screen bounds
         if (current_x + FONT_WIDTH * size >= lcd->width) {
-            break; // Достигли правого края экрана
+            break; // Reached right edge of screen
         }
 
-        // Декодируем UTF-8 символ
+        // Decode UTF-8 character
         const char *str_before = str;
         uint32_t unicode_char = utf8_decode(&str);
 
-        // Рисуем символ
+        // Draw character
         ili9341_draw_char_unicode(lcd, current_x, y, unicode_char, color, bg, size);
 
-        // Переходим к следующей позиции (ширина символа + 1 пиксель отступа)
+        // Move to next position (character width + 1 pixel spacing)
         current_x += (FONT_WIDTH + 1) * size;
 
-        // Проверка на конец строки (если декодер не продвинулся)
+        // Check for end of string (if decoder didn't advance)
         if (str == str_before) {
             break;
         }

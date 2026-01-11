@@ -268,20 +268,20 @@ static esp_ble_ext_scan_params_t ext_scan_params = {
     }
 };
 
-// Обработчик событий BLE GAP
+// BLE GAP event handler
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     ESP_LOGI(TAG, "GAP event: %d", event);
     switch (event) {
     case ESP_GAP_BLE_SCAN_PARAM_SET_COMPLETE_EVT:
-        ESP_LOGI(TAG, "Параметры сканирования установлены");
+        ESP_LOGI(TAG, "Scan parameters set");
         break;
 
     case ESP_GAP_BLE_SCAN_START_COMPLETE_EVT:
         if (param->scan_start_cmpl.status == ESP_BT_STATUS_SUCCESS) {
-            ESP_LOGI(TAG, "Сканирование BLE запущено");
+            ESP_LOGI(TAG, "BLE scan started");
         } else {
-            ESP_LOGE(TAG, "Ошибка запуска сканирования: %d", param->scan_start_cmpl.status);
+            ESP_LOGE(TAG, "Scan start error: %d", param->scan_start_cmpl.status);
         }
         break;
 
@@ -405,10 +405,10 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 
     case ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT:
         if (param->scan_stop_cmpl.status == ESP_BT_STATUS_SUCCESS) {
-            ESP_LOGI(TAG, "Сканирование остановлено");
+            ESP_LOGI(TAG, "Scan stopped");
             g_scanning = false;
         } else {
-            ESP_LOGE(TAG, "Ошибка остановки сканирования: %d", param->scan_stop_cmpl.status);
+            ESP_LOGE(TAG, "Scan stop error: %d", param->scan_stop_cmpl.status);
         }
         break;
 

@@ -18,7 +18,7 @@
 
 static const char *TAG = "ILI9341_DEMO";
 
-// Настройки пинов для дисплея ILI9341
+// Pin configuration for ILI9341 display
 #define LCD_HOST       SPI2_HOST
 #define PIN_NUM_MOSI   7
 #define PIN_NUM_CLK    6
@@ -27,8 +27,8 @@ static const char *TAG = "ILI9341_DEMO";
 #define PIN_NUM_RST    16
 #define PIN_NUM_BCKL   5
 
-// Настройки пинов для тачскрина XPT2046
-// Используем SPI3_HOST так как пины отличаются от дисплея
+// Pin configuration for XPT2046 touchscreen
+// Using SPI3_HOST because the pins differ from the display
 #define TOUCH_HOST     SPI3_HOST
 #define TOUCH_MISO     2   // T_DO
 #define TOUCH_MOSI     42  // T_DIN
@@ -36,16 +36,16 @@ static const char *TAG = "ILI9341_DEMO";
 #define TOUCH_CS       41  // T_CS
 #define TOUCH_IRQ      1   // T_IRQ
 
-// Функция для рисования демонстрационного паттерна
+// Function to draw a demo pattern
 static void draw_demo_pattern(ili9341_t *lcd)
 {
     ESP_LOGI(TAG, "Drawing demo pattern...");
 
-    // Заполняем фон белым цветом
+    // Fill background with white color
     ili9341_fill_screen(lcd, ILI9341_WHITE);
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    // Рисуем разноцветные полосы
+    // Draw colored stripes
     int stripe_height = 320 / 6;
     ili9341_fill_rect(lcd, 0, 0 * stripe_height, 240, stripe_height, ILI9341_RED);
     ili9341_fill_rect(lcd, 0, 1 * stripe_height, 240, stripe_height, ILI9341_GREEN);
@@ -56,23 +56,23 @@ static void draw_demo_pattern(ili9341_t *lcd)
 
     vTaskDelay(pdMS_TO_TICKS(2000));
 
-    // Рисуем квадраты по углам
+    // Draw squares in corners
     ili9341_fill_screen(lcd, ILI9341_BLACK);
     ili9341_fill_rect(lcd, 10, 10, 60, 60, ILI9341_RED);
     ili9341_fill_rect(lcd, 240 - 70, 10, 60, 60, ILI9341_GREEN);
     ili9341_fill_rect(lcd, 10, 320 - 70, 60, 60, ILI9341_BLUE);
     ili9341_fill_rect(lcd, 240 - 70, 320 - 70, 60, 60, ILI9341_YELLOW);
 
-    // Рисуем квадрат в центре
+    // Draw square in center
     ili9341_fill_rect(lcd, 240/2 - 40, 320/2 - 40, 80, 80, ILI9341_WHITE);
 }
 
-// Функция калибровки тачскрина
+// Touchscreen calibration function
 static void calibrate_touchscreen(ili9341_t *lcd, xpt2046_t *touch)
 {
     ESP_LOGI(TAG, "Starting touchscreen calibration");
 
-    // Точки калибровки: верхний левый, верхний правый, нижний правый, нижний левый, центр
+    // Calibration points: top-left, top-right, bottom-right, bottom-left, center
     const struct {
         uint16_t x;
         uint16_t y;
@@ -89,19 +89,19 @@ static void calibrate_touchscreen(ili9341_t *lcd, xpt2046_t *touch)
     uint16_t raw_y_values[5];
 
     for (int i = 0; i < 5; i++) {
-        // Очищаем экран
+        // Clear screen
         ili9341_fill_screen(lcd, ILI9341_WHITE);
 
-        // Рисуем инструкцию
+        // Draw instruction
         char instruction[50];
         sprintf(instruction, "Touch %s point", calibration_points[i].name);
         ili9341_draw_string(lcd, 10, 10, instruction, ILI9341_BLACK, ILI9341_WHITE, 1);
 
-        // Рисуем мишень (крест)
+        // Draw target (crosshair)
         uint16_t cx = calibration_points[i].x;
         uint16_t cy = calibration_points[i].y;
 
-        // Рисуем крест
+        // Draw crosshair
         for (int d = -15; d <= 15; d++) {
             if (cx + d >= 0 && cx + d < 240) {
                 ili9341_draw_pixel(lcd, cx + d, cy, ILI9341_RED);
@@ -115,7 +115,7 @@ static void calibrate_touchscreen(ili9341_t *lcd, xpt2046_t *touch)
             }
         }
 
-        // Рисуем центральную точку
+        // Draw center dot
         for (int dy = -3; dy <= 3; dy++) {
             for (int dx = -3; dx <= 3; dx++) {
                 if (cx + dx >= 0 && cx + dx < 240 && cy + dy >= 0 && cy + dy < 320) {
@@ -127,10 +127,10 @@ static void calibrate_touchscreen(ili9341_t *lcd, xpt2046_t *touch)
         ESP_LOGI(TAG, "Waiting for touch on %s (%d, %d)...",
                  calibration_points[i].name, cx, cy);
 
-        // Ждем касания
+        // Wait for touch
         bool touched = false;
         while (!touched) {
-            // Читаем сырые значения напрямую
+            // Read raw values directly
             uint16_t raw_x = xpt2046_read_raw(touch, 0xD0);  // X position
             uint16_t raw_y = xpt2046_read_raw(touch, 0x90);  // Y position
             uint16_t raw_z = xpt2046_read_raw(touch, 0xB0);  // Pressure
@@ -142,11 +142,11 @@ static void calibrate_touchscreen(ili9341_t *lcd, xpt2046_t *touch)
                 ESP_LOGI(TAG, "Point %d (%s): raw_x=%d, raw_y=%d, raw_z=%d",
                          i, calibration_points[i].name, raw_x, raw_y, raw_z);
 
-                // Показываем подтверждение
+                // Show confirmation
                 ili9341_fill_rect(lcd, cx - 5, cy - 5, 10, 10, ILI9341_GREEN);
                 vTaskDelay(pdMS_TO_TICKS(500));
 
-                // Ждем отпускания
+                // Wait for release
                 while (raw_z > 100) {
                     vTaskDelay(pdMS_TO_TICKS(50));
                     raw_z = xpt2046_read_raw(touch, 0xB0);
@@ -159,7 +159,7 @@ static void calibrate_touchscreen(ili9341_t *lcd, xpt2046_t *touch)
         }
     }
 
-    // Вычисляем калибровочные значения
+    // Calculate calibration values
     ESP_LOGI(TAG, "\n========== CALIBRATION RESULTS ==========");
     ESP_LOGI(TAG, "Point 0 (Top-Left):     raw_x=%d, raw_y=%d", raw_x_values[0], raw_y_values[0]);
     ESP_LOGI(TAG, "Point 1 (Top-Right):    raw_x=%d, raw_y=%d", raw_x_values[1], raw_y_values[1]);
@@ -167,7 +167,7 @@ static void calibrate_touchscreen(ili9341_t *lcd, xpt2046_t *touch)
     ESP_LOGI(TAG, "Point 3 (Bottom-Left):  raw_x=%d, raw_y=%d", raw_x_values[3], raw_y_values[3]);
     ESP_LOGI(TAG, "Point 4 (Center):       raw_x=%d, raw_y=%d", raw_x_values[4], raw_y_values[4]);
 
-    // Находим минимумы и максимумы
+    // Find min and max values
     uint16_t x_min = raw_x_values[0];
     uint16_t x_max = raw_x_values[0];
     uint16_t y_min = raw_y_values[0];
@@ -185,7 +185,7 @@ static void calibrate_touchscreen(ili9341_t *lcd, xpt2046_t *touch)
              x_min, x_max, y_min, y_max);
     ESP_LOGI(TAG, "==========================================\n");
 
-    // Показываем результаты на экране
+    // Show results on screen
     ili9341_fill_screen(lcd, ILI9341_WHITE);
     ili9341_draw_string(lcd, 10, 10, "Calibration Done!", ILI9341_GREEN, ILI9341_WHITE, 2);
 
@@ -208,30 +208,30 @@ static void draw_text_demo(ili9341_t *lcd, xpt2046_t *touch)
 {
     ESP_LOGI(TAG, "Drawing text demo with Russian support");
 
-    // Заливаем экран черным цветом
+    // Fill screen with black color
     ili9341_fill_screen(lcd, ILI9341_BLACK);
 
-    // Рисуем английский текст разного размера
+    // Draw English text in different sizes
     ili9341_draw_string(lcd, 10, 10, "Hello World!", ILI9341_WHITE, ILI9341_BLACK, 1);
     ili9341_draw_string(lcd, 10, 25, "ESP32-S3", ILI9341_CYAN, ILI9341_BLACK, 2);
 
-    // Рисуем русский текст
+    // Draw Russian text
     ili9341_draw_string(lcd, 10, 55, "Hello, Владислав!", ILI9341_GREEN, ILI9341_BLACK, 2);
     ili9341_draw_string(lcd, 10, 80, "Тест тестович", ILI9341_YELLOW, ILI9341_BLACK, 1);
 
-    // Разные цвета на русском
+    // Different colors in Russian
     ili9341_draw_string(lcd, 10, 100, "КРАСНЫЙ", ILI9341_RED, ILI9341_BLACK, 2);
     ili9341_draw_string(lcd, 10, 120, "ЗЕЛЕНЫЙ", ILI9341_GREEN, ILI9341_BLACK, 2);
     ili9341_draw_string(lcd, 10, 140, "СИНИЙ", ILI9341_BLUE, ILI9341_BLACK, 2);
 
-    // Русский алфавит (выборочно)
+    // Russian alphabet (selected characters)
     ili9341_draw_string(lcd, 10, 170, "АБВГДЕЖЗ", ILI9341_MAGENTA, ILI9341_BLACK, 1);
     ili9341_draw_string(lcd, 10, 185, "абвгдежз", ILI9341_MAGENTA, ILI9341_BLACK, 1);
 
-    // Цифры
+    // Numbers
     ili9341_draw_string(lcd, 10, 210, "0123456789", ILI9341_CYAN, ILI9341_BLACK, 2);
 
-    // Информация внизу
+    // Info at the bottom
     ili9341_draw_string(lcd, 10, 280, "ILI9341 Driver", ILI9341_ORANGE, ILI9341_BLACK, 1);
     ili9341_draw_string(lcd, 10, 295, "UTF-8 Support", ILI9341_ORANGE, ILI9341_BLACK, 1);
 
@@ -250,27 +250,27 @@ static void draw_text_demo(ili9341_t *lcd, xpt2046_t *touch)
     }
 }
 
-// Функция для рисования на экране с помощью тачскрина
+// Function for drawing on screen using touchscreen
 static void touch_draw_mode(ili9341_t *lcd, xpt2046_t *touch)
 {
     ESP_LOGI(TAG, "Starting touch draw mode");
 
-    // Очищаем экран белым цветом
+    // Clear screen with white color
     ili9341_fill_screen(lcd, ILI9341_WHITE);
 
-    // Рисуем инструкцию
+    // Draw instruction
     ili9341_draw_string(lcd, 10, 10, "Touch to draw!", ILI9341_BLACK, ILI9341_WHITE, 2);
     vTaskDelay(pdMS_TO_TICKS(2000));
 
-    // Очищаем экран для рисования
+    // Clear screen for drawing
     ili9341_fill_screen(lcd, ILI9341_WHITE);
 
-    // Переменные для отслеживания предыдущей позиции (для рисования линий)
+    // Variables to track previous position (for drawing lines)
     int16_t last_x = -1;
     int16_t last_y = -1;
     bool was_touched = false;
 
-    // Размер кисти
+    // Brush size
     const int brush_size = 3;
 
     ESP_LOGI(TAG, "Ready to draw! Touch the screen...");
@@ -280,9 +280,9 @@ static void touch_draw_mode(ili9341_t *lcd, xpt2046_t *touch)
 
         if (touch_data.touched) {
 
-            // Рисуем точку или линию
+            // Draw point or line
             if (was_touched && last_x >= 0 && last_y >= 0) {
-                // Рисуем линию от предыдущей точки к текущей (плавное рисование)
+                // Draw line from previous point to current (smooth drawing)
                 int dx = touch_data.x - last_x;
                 int dy = touch_data.y - last_y;
                 int steps = (abs(dx) > abs(dy)) ? abs(dx) : abs(dy);
@@ -292,7 +292,7 @@ static void touch_draw_mode(ili9341_t *lcd, xpt2046_t *touch)
                         int x = last_x + (dx * i) / steps;
                         int y = last_y + (dy * i) / steps;
 
-                        // Рисуем круглую кисть
+                        // Draw circular brush
                         for (int by = -brush_size; by <= brush_size; by++) {
                             for (int bx = -brush_size; bx <= brush_size; bx++) {
                                 if (bx*bx + by*by <= brush_size*brush_size) {
@@ -307,7 +307,7 @@ static void touch_draw_mode(ili9341_t *lcd, xpt2046_t *touch)
                     }
                 }
             } else {
-                // Первая точка - просто рисуем круг
+                // First point - just draw a circle
                 for (int by = -brush_size; by <= brush_size; by++) {
                     for (int bx = -brush_size; bx <= brush_size; bx++) {
                         if (bx*bx + by*by <= brush_size*brush_size) {
@@ -325,7 +325,7 @@ static void touch_draw_mode(ili9341_t *lcd, xpt2046_t *touch)
             last_y = touch_data.y;
             was_touched = true;
         } else {
-            // Сбрасываем предыдущую позицию когда отпускаем палец
+            // Reset previous position when finger is released
             if (was_touched) {
                 last_x = -1;
                 last_y = -1;
@@ -517,10 +517,10 @@ void app_main(void)
     ESP_LOGI(TAG, "Touch Pin configuration: MISO=%d, MOSI=%d, CLK=%d, CS=%d, IRQ=%d",
              TOUCH_MISO, TOUCH_MOSI, TOUCH_CLK, TOUCH_CS, TOUCH_IRQ);
 
-    // Создаем структуру дисплея
+    // Create display structure
     ili9341_t lcd;
 
-    // Инициализация дисплея
+    // Initialize display
     esp_err_t ret = ili9341_init(&lcd, LCD_HOST, PIN_NUM_MOSI, PIN_NUM_CLK,
                                  PIN_NUM_CS, PIN_NUM_DC, PIN_NUM_RST, PIN_NUM_BCKL);
 
@@ -531,11 +531,11 @@ void app_main(void)
 
     ESP_LOGI(TAG, "LCD initialized successfully!");
 
-    // Включаем подсветку
+    // Turn on backlight
     ili9341_backlight(&lcd, true);
     ESP_LOGI(TAG, "Backlight ON");
 
-    // Инициализация тачскрина
+    // Initialize touchscreen
     xpt2046_t touch;
     ret = xpt2046_init(&touch, TOUCH_HOST, TOUCH_MISO, TOUCH_MOSI, TOUCH_CLK,
                        TOUCH_CS, TOUCH_IRQ, 240, 320);
@@ -551,7 +551,7 @@ void app_main(void)
     // calibrate_touchscreen(&lcd, &touch);
 
     xpt2046_set_calibration(&touch, 315, 1784, 237, 1825);
-    xpt2046_set_transform(&touch, false, true, false);  // Инвертируем Y
+    xpt2046_set_transform(&touch, false, true, false);  // Invert Y
 
     // draw_text_demo(&lcd, &touch);
     setup_nvs();
