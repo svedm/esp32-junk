@@ -625,14 +625,10 @@ static void lvgl_task(void *pvParameter)
         // Handle LVGL tasks - this processes all widgets, animations, input devices, etc.
         uint32_t time_till_next = lv_timer_handler();
 
-        // Give other tasks a chance to run
-        taskYIELD();
-
-        // Sleep for the time until next timer needs to be run, but at least 5ms
-        uint32_t sleep_ms = (time_till_next > 5) ? 5 : time_till_next;
-        if (sleep_ms > 0) {
-            vTaskDelay(pdMS_TO_TICKS(sleep_ms));
-        }
+        // Sleep for the time until next timer needs to be run
+        // Minimum 1ms delay to allow IDLE task to run and reset watchdog
+        uint32_t sleep_ms = (time_till_next < 1) ? 1 : (time_till_next > 10 ? 10 : time_till_next);
+        vTaskDelay(pdMS_TO_TICKS(sleep_ms));
     }
 }
 
