@@ -11,6 +11,8 @@
 #define BLE_DEVICE_NAME_MAX_LEN 31
 #define MAX_TRACKED_DEVICES 50
 #define DEVICE_TIMEOUT_SEC 300  // 5 minutes
+#define MAX_SERVICES 8
+#define MANUFACTURER_NAME_MAX_LEN 20
 
 // BLE device info from scan
 typedef struct {
@@ -18,6 +20,11 @@ typedef struct {
     int8_t rssi;                            // Signal strength (dBm)
     char name[BLE_DEVICE_NAME_MAX_LEN + 1]; // Device name
     esp_ble_addr_type_t addr_type;          // Address type (public/random)
+    uint16_t appearance;                    // Device appearance
+    uint16_t manufacturer_id;               // Manufacturer company ID
+    char manufacturer_name[MANUFACTURER_NAME_MAX_LEN + 1]; // Manufacturer name
+    uint16_t service_uuids[MAX_SERVICES];   // List of 16-bit service UUIDs
+    uint8_t service_count;                  // Number of services found
 } ble_device_t;
 
 // Tracked device with timestamp
@@ -43,5 +50,8 @@ void start_ble_scan_task(void);
 
 // Get device list for display
 device_list_t* get_device_list(void);
+
+// Get human-readable name for common BLE service UUIDs
+const char* get_ble_service_name(uint16_t uuid);
 
 #endif // BLUETOOTH_H

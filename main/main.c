@@ -414,13 +414,16 @@ static void display_ble_devices(ili9341_t *lcd)
         char display_text[50];
         if (device->name[0] != '\0') {
             snprintf(display_text, sizeof(display_text), "%s", device->name);
+        } else if (strcmp(device->manufacturer_name, "Unknown") != 0) {
+            // Show manufacturer if name not available
+            snprintf(display_text, sizeof(display_text), "[%s]", device->manufacturer_name);
         } else {
             snprintf(display_text, sizeof(display_text), "%02X:%02X:%02X:%02X:%02X:%02X",
                      device->bda[0], device->bda[1], device->bda[2],
                      device->bda[3], device->bda[4], device->bda[5]);
         }
 
-        // Draw device info
+        // Draw device info - main line
         ili9341_draw_string(lcd, 10, y_pos, display_text, color, ILI9341_BLACK, 1);
 
         // Display RSSI on the right side
@@ -431,8 +434,56 @@ static void display_ble_devices(ili9341_t *lcd)
         y_pos += line_height;
         displayed_count++;
 
+        // Show manufacturer and service info on second line if available
+        if (y_pos <= 310) {
+            char info_text[60] = "";
+            bool has_info = false;
+
+            // Add manufacturer if not already shown in name
+            if (device->name[0] != '\0' && strcmp(device->manufacturer_name, "Unknown") != 0) {
+                snprintf(info_text, sizeof(info_text), "%s", device->manufacturer_name);
+                has_info = true;
+            }
+
+            // Add service UUIDs - show all services
+            if (device->service_count > 0) {
+                if (has_info && strlen(info_text) > 0) {
+                    strncat(info_text, " | ", sizeof(info_text) - strlen(info_text) - 1);
+                }
+
+                for (int j = 0; j < device->service_count && j < 3; j++) {
+                    char service_info[30];
+                    const char* service_name = get_ble_service_name(device->service_uuids[j]);
+
+                    if (service_name) {
+                        snprintf(service_info, sizeof(service_info), "%s%s",
+                                j > 0 ? "," : "", service_name);
+                    } else {
+                        snprintf(service_info, sizeof(service_info), "%s0x%04X",
+                                j > 0 ? "," : "", device->service_uuids[j]);
+                    }
+
+                    strncat(info_text, service_info, sizeof(info_text) - strlen(info_text) - 1);
+                }
+
+                // Show count if there are more services
+                if (device->service_count > 3) {
+                    char more[10];
+                    snprintf(more, sizeof(more), "+%d", device->service_count - 3);
+                    strncat(info_text, more, sizeof(info_text) - strlen(info_text) - 1);
+                }
+
+                has_info = true;
+            }
+
+            if (has_info) {
+                ili9341_draw_string(lcd, 15, y_pos, info_text, ILI9341_DARKGREY, ILI9341_BLACK, 1);
+                y_pos += line_height - 1;  // Less spacing for info line
+            }
+        }
+
         // Stop if we run out of screen space
-        if (y_pos > 310) {
+        if (y_pos > 308) {
             break;
         }
     }
