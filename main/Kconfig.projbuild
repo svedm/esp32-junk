@@ -1,0 +1,12 @@
+menu "Wi-Fi network configuration"
+    config WIFI_SSID
+        string "Wi-Fi SSID"
+        default "Wi-Fi SSID"
+        help
+            Target Wi-Fi network name
+    config WIFI_PASSWORD
+        string "Wi-Fi Password"
+        default "PASSWORD"
+        help
+            Wi-Fi network password
+endmenu

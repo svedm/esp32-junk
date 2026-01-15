@@ -4,3 +4,4 @@
 
 void setup_nvs();
 void scan_wifi(wifi_ap_record_t* ap_info, uint16_t* number);
+void connect_to_wifi();

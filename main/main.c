@@ -17,6 +17,7 @@
 #include <string.h>
 #include "bluetooth.h"
 #include "lvgl.h"
+#include "network.h"
 
 static const char *TAG = "ILI9341_DEMO";
 
@@ -632,6 +633,20 @@ static void lvgl_task(void *pvParameter)
     }
 }
 
+// WiFi task - runs WiFi connection in background
+static void wifi_task(void *pvParameter)
+{
+    ESP_LOGI(TAG, "WiFi task started");
+    vTaskDelay(pdMS_TO_TICKS(500)); // Give LVGL time to render first frame
+    connect_to_wifi();
+    ESP_LOGI(TAG, "WiFi connection initiated");
+    vTaskDelete(NULL);
+}
+
+void http_response_callback(int status_code, const char *response) {
+    ESP_LOGI(TAG, "HTTP Response: %d, Body: %s\n", status_code, response);
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Starting LVGL Demo with ILI9341 and XPT2046");
@@ -639,6 +654,9 @@ void app_main(void)
              PIN_NUM_MOSI, PIN_NUM_CLK, PIN_NUM_CS, PIN_NUM_DC, PIN_NUM_RST, PIN_NUM_BCKL);
     ESP_LOGI(TAG, "Touch Pin configuration: MISO=%d, MOSI=%d, CLK=%d, CS=%d, IRQ=%d",
              TOUCH_MISO, TOUCH_MOSI, TOUCH_CLK, TOUCH_CS, TOUCH_IRQ);
+
+    // Initialize NVS first
+    setup_nvs();
 
     // Initialize ILI9341 LCD
     ESP_LOGI(TAG, "Initializing ILI9341 LCD...");
@@ -705,7 +723,14 @@ void app_main(void)
     // Create LVGL task with larger stack (8KB instead of 4KB)
     xTaskCreate(lvgl_task, "lvgl_task", 8192, NULL, 5, NULL);
 
+    // Create WiFi task (lower priority, runs after LVGL starts)
+    xTaskCreate(wifi_task, "wifi_task", 4096, NULL, 3, NULL);
+
     ESP_LOGI(TAG, "LVGL initialization complete!");
+
+    vTaskDelay(pdMS_TO_TICKS(10000));
+
+    http_get("https://www.google.com", http_response_callback);
 
     // Main task can now exit - LVGL task handles everything
 }
