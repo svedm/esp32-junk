@@ -9,6 +9,12 @@
 
 #define TAG "Wi-Fi"
 
+static wifi_ready_callback_t wifi_ready_callback = NULL;
+
+void wifi_set_ready_callback(wifi_ready_callback_t callback) {
+    wifi_ready_callback = callback;
+}
+
 void setup_nvs() {
      esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -57,6 +63,12 @@ static void handle_disconnect(void* event_handler_arg, esp_event_base_t event_ba
 static void handle_ip(void* event_handler_arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
     ESP_LOGI(TAG, "Wi-Fi got IP");
     update_time();
+
+    // Call user callback if set
+    if (wifi_ready_callback != NULL) {
+        ESP_LOGI(TAG, "Calling Wi-Fi ready callback");
+        wifi_ready_callback();
+    }
 }
 
 static void handle_connect(void* event_handler_arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {

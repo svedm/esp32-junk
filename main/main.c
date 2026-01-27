@@ -664,6 +664,21 @@ void print_time(void) {
     ESP_LOGI(TAG, "The current date/time in Moscow is: %s", strftime_buf);
 }
 
+// Task that performs network requests after Wi-Fi is ready
+static void network_request_task(void *pvParameter)
+{
+    ESP_LOGI(TAG, "Wi-Fi is ready, making network requests...");
+    http_get("https://www.google.com", http_response_callback);
+    print_time();
+    vTaskDelete(NULL);
+}
+
+// Callback that runs when Wi-Fi gets IP address
+void on_wifi_ready(void) {
+    // Create a separate task for network requests to avoid blocking the event handler
+    xTaskCreate(network_request_task, "network_req", 4096, NULL, 3, NULL);
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Starting LVGL Demo with ILI9341 and XPT2046");
@@ -740,15 +755,9 @@ void app_main(void)
     // Create LVGL task with larger stack (8KB instead of 4KB)
     xTaskCreate(lvgl_task, "lvgl_task", 8192, NULL, 5, NULL);
 
-    // Create WiFi task (lower priority, runs after LVGL starts)
-    xTaskCreate(wifi_task, "wifi_task", 4096, NULL, 3, NULL);
-
     ESP_LOGI(TAG, "LVGL initialization complete!");
 
-    vTaskDelay(pdMS_TO_TICKS(10000));
-
-    http_get("https://www.google.com", http_response_callback);
-    print_time();
-
-    // Main task can now exit - LVGL task handles everything
+    // Wi-Fi
+    wifi_set_ready_callback(on_wifi_ready);
+    xTaskCreate(wifi_task, "wifi_task", 4096, NULL, 3, NULL);
 }
