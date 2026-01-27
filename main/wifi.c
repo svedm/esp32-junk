@@ -5,6 +5,7 @@
 #include "freertos/event_groups.h"
 #include "esp_event.h"
 #include "nvs_flash.h"
+#include "app_time.h"
 
 #define TAG "Wi-Fi"
 
@@ -23,6 +24,8 @@ void setup_nvs() {
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    setup_time();
 }
 
 void scan_wifi(wifi_ap_record_t* ap_info, uint16_t* number) {
@@ -53,6 +56,7 @@ static void handle_disconnect(void* event_handler_arg, esp_event_base_t event_ba
 
 static void handle_ip(void* event_handler_arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
     ESP_LOGI(TAG, "Wi-Fi got IP");
+    update_time();
 }
 
 static void handle_connect(void* event_handler_arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {

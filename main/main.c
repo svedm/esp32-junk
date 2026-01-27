@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "driver/gpio.h"
 #include "ili9341.h"
 #include "xpt2046.h"
 #include "wifi.h"
@@ -647,6 +648,22 @@ void http_response_callback(int status_code, const char *response) {
     ESP_LOGI(TAG, "HTTP Response: %d, Body: %s\n", status_code, response);
 }
 
+void print_time(void) {
+    time_t now;
+    char strftime_buf[64];
+    struct tm timeinfo;
+
+    time(&now);
+    // Set timezone to Moscow Standard Time (MSK = UTC+3)
+    // Note: POSIX format uses opposite signs, so UTC+3 is "MSK-3"
+    setenv("TZ", "MSK-3", 1);
+    tzset();
+
+    localtime_r(&now, &timeinfo);
+    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+    ESP_LOGI(TAG, "The current date/time in Moscow is: %s", strftime_buf);
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Starting LVGL Demo with ILI9341 and XPT2046");
@@ -731,6 +748,7 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(10000));
 
     http_get("https://www.google.com", http_response_callback);
+    print_time();
 
     // Main task can now exit - LVGL task handles everything
 }
