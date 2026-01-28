@@ -19,6 +19,7 @@
 #include "bluetooth.h"
 #include "lvgl.h"
 #include "network.h"
+#include "weather.h"
 
 static const char *TAG = "ILI9341_DEMO";
 
@@ -517,6 +518,13 @@ static void display_update_task(void *pvParameters)
 static ili9341_t lcd;
 static xpt2046_t touch;
 
+// LVGL weather UI objects
+static lv_obj_t *weather_label_temp = NULL;
+static lv_obj_t *weather_label_wind = NULL;
+static lv_obj_t *weather_label_humidity = NULL;
+static lv_obj_t *weather_label_precip = NULL;
+static lv_obj_t *loading_idicatior = NULL;
+
 // Forward declarations
 static uint32_t my_get_millis(void);
 
@@ -581,35 +589,97 @@ static void button_event_handler(lv_event_t *e)
     }
 }
 
-// Create a simple UI with a button
-static void create_demo_ui(void)
+// Create weather UI
+static void create_weather_ui(void)
 {
-    // Create a button in the center of the screen
-    lv_obj_t *btn = lv_button_create(lv_screen_active());
-    static lv_style_t btn_style;
-    lv_style_init(&btn_style);
-    lv_style_set_bg_color(&btn_style, lv_color_hex(0xFF0000));
+    // Set dark blue background
+    lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x383838), 0);
 
+    // Temperature label
+    weather_label_temp = lv_label_create(lv_screen_active());
+    lv_obj_set_style_text_font(weather_label_temp, &lv_font_montserrat_48, 0);
+    lv_label_set_text(weather_label_temp, "");
+    lv_obj_align(weather_label_temp, LV_ALIGN_TOP_MID, 10, 50);
+    lv_obj_set_style_text_color(weather_label_temp, lv_color_hex(0xFFFFFF), 0);
 
-    lv_obj_set_size(btn, 120, 50);
-    lv_obj_add_style(btn, &btn_style, 0);
-    lv_obj_align(btn, LV_ALIGN_CENTER, 0, -40);
-    lv_obj_add_event_cb(btn, button_event_handler, LV_EVENT_ALL, NULL);
+    // Wind label
+    weather_label_wind = lv_label_create(lv_screen_active());
+    lv_label_set_text(weather_label_wind, "");
+    lv_obj_align(weather_label_wind, LV_ALIGN_TOP_LEFT, 10, 120);
+    lv_obj_set_style_text_color(weather_label_wind, lv_color_hex(0xFFFFFF), 0);
 
-    // Create a label on the button
-    lv_obj_t *label = lv_label_create(btn);
-    lv_label_set_text(label, "Click Me!");
-    lv_obj_center(label);
+    // Humidity label
+    weather_label_humidity = lv_label_create(lv_screen_active());
+    lv_label_set_text(weather_label_humidity, "");
+    lv_obj_align(weather_label_humidity, LV_ALIGN_TOP_LEFT, 10, 150);
+    lv_obj_set_style_text_color(weather_label_humidity, lv_color_hex(0xFFFFFF), 0);
 
-    // Create a title label
-    lv_obj_t *title = lv_label_create(lv_screen_active());
-    lv_label_set_text(title, "LVGL + ILI9341 Demo");
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
+    // Precipitation label
+    weather_label_precip = lv_label_create(lv_screen_active());
+    lv_label_set_text(weather_label_precip, "");
+    lv_obj_align(weather_label_precip, LV_ALIGN_TOP_LEFT, 10, 180);
+    lv_obj_set_style_text_color(weather_label_precip, lv_color_hex(0xFFFFFF), 0);
 
-    // Create an info label
-    lv_obj_t *info = lv_label_create(lv_screen_active());
-    lv_label_set_text(info, "Touch the button!");
-    lv_obj_align(info, LV_ALIGN_CENTER, 0, 40);
+    // Loading indicator
+
+    loading_idicatior = lv_spinner_create(lv_screen_active());
+    lv_obj_set_size(loading_idicatior, 100, 100);
+    lv_obj_center(loading_idicatior);
+    lv_spinner_set_anim_params(loading_idicatior, 10000, 200);
+}
+
+// Callback to update weather UI
+static void weather_update_callback(weather_data_t *weather)
+{
+    if (!weather || !weather->is_valid) {
+        ESP_LOGE(TAG, "Weather data is invalid");
+        if (weather_label_temp) {
+            lv_label_set_text(weather_label_temp, "Error loading");
+        }
+        return;
+    }
+
+    ESP_LOGI(TAG, "Updating weather UI");
+
+    // Update temperature
+    if (weather_label_temp) {
+        static char temp_buf[64];
+        snprintf(temp_buf, sizeof(temp_buf), "%.1fC", weather->temperature);
+        lv_label_set_text(weather_label_temp, temp_buf);
+    }
+
+    // Update wind
+    if (weather_label_wind) {
+        static char wind_buf[80];
+        snprintf(wind_buf, sizeof(wind_buf), "Wind: %.1f kn, %d deg\nGusts: %.1f kn",
+                 weather->wind_speed, weather->wind_direction, weather->wind_gusts);
+        lv_label_set_text(weather_label_wind, wind_buf);
+    }
+
+    // Update humidity
+    if (weather_label_humidity) {
+        static char hum_buf[64];
+        snprintf(hum_buf, sizeof(hum_buf), "Humidity: %d%%", weather->humidity);
+        lv_label_set_text(weather_label_humidity, hum_buf);
+    }
+
+    // Update precipitation
+    if (weather_label_precip) {
+        static char precip_buf[128];
+        if (weather->snowfall > 0.1) {
+            snprintf(precip_buf, sizeof(precip_buf), "Snow: %.1f cm", weather->snowfall);
+        } else if (weather->rain > 0.1 || weather->showers > 0.1) {
+            snprintf(precip_buf, sizeof(precip_buf), "Rain: %.1f mm",
+                     weather->rain + weather->showers);
+        } else if (weather->precipitation > 0.1) {
+            snprintf(precip_buf, sizeof(precip_buf), "Precip: %.1f mm", weather->precipitation);
+        } else {
+            snprintf(precip_buf, sizeof(precip_buf), "No precipitation");
+        }
+        lv_label_set_text(weather_label_precip, precip_buf);
+    }
+
+    lv_obj_add_flag(loading_idicatior, LV_OBJ_FLAG_HIDDEN);
 }
 
 // Custom tick callback for LVGL - returns milliseconds since boot
@@ -668,8 +738,14 @@ void print_time(void) {
 static void network_request_task(void *pvParameter)
 {
     ESP_LOGI(TAG, "Wi-Fi is ready, making network requests...");
-    http_get("https://www.google.com", http_response_callback);
     print_time();
+
+    // Wait a bit for LVGL to be ready
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    // Get weather data
+    get_weather(weather_update_callback);
+
     vTaskDelete(NULL);
 }
 
@@ -747,10 +823,10 @@ void app_main(void)
 
     ESP_LOGI(TAG, "LVGL input device initialized");
 
-    // Create the demo UI
-    create_demo_ui();
+    // Create the weather UI
+    create_weather_ui();
 
-    ESP_LOGI(TAG, "Demo UI created");
+    ESP_LOGI(TAG, "Weather UI created");
 
     // Create LVGL task with larger stack (8KB instead of 4KB)
     xTaskCreate(lvgl_task, "lvgl_task", 8192, NULL, 5, NULL);
