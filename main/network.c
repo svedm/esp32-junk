@@ -12,11 +12,12 @@
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "lwip/dns.h"
+#include "lwip/netdb.h"
+#include "lwip/inet.h"
 
-#define MAX_HTTP_RECV_BUFFER 512
-#define MAX_HTTP_OUTPUT_BUFFER 2048
 #define TAG "NETWORK"
-
 typedef struct {
     http_response_callback_t callback;
     int status_code;
@@ -34,6 +35,12 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt)
             break;
         case HTTP_EVENT_ON_CONNECTED:
             ESP_LOGD(TAG, "HTTP_EVENT_ON_CONNECTED");
+            // Clear buffer at the start of new request
+            if (output_buffer != NULL) {
+                free(output_buffer);
+                output_buffer = NULL;
+            }
+            output_len = 0;
             break;
         case HTTP_EVENT_HEADER_SENT:
             ESP_LOGD(TAG, "HTTP_EVENT_HEADER_SENT");
@@ -138,6 +145,7 @@ void http_get(const char *url, http_response_callback_t callback)
         .event_handler = _http_event_handler,
         .user_data = &user_data,
         .skip_cert_common_name_check = true,
+        .crt_bundle_attach = esp_crt_bundle_attach
     };
 
     ESP_LOGI(TAG, "HTTPS GET request to %s", url);
@@ -153,4 +161,43 @@ void http_get(const char *url, http_response_callback_t callback)
     }
 
     esp_http_client_cleanup(client);
+}
+
+void http_post(const char *url, const char *post_data, http_response_callback_t callback)
+{
+    http_user_data_t user_data = {
+        .callback = callback,
+        .status_code = 0
+    };
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = _http_event_handler,
+        .user_data = &user_data,
+        .method = HTTP_METHOD_POST,
+        .crt_bundle_attach = esp_crt_bundle_attach,  // Use certificate bundle
+    };
+
+    size_t post_len = strlen(post_data);
+    ESP_LOGI(TAG, "HTTPS POST request to %s", url);
+    ESP_LOGI(TAG, "POST data length: %d bytes", post_len);
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, post_data, post_len);
+
+    ESP_LOGI(TAG, "Starting HTTP perform...");
+    esp_err_t err = esp_http_client_perform(client);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "HTTPS Status = %d, content_length = %"PRId64,
+                esp_http_client_get_status_code(client),
+                esp_http_client_get_content_length(client));
+    } else {
+        ESP_LOGE(TAG, "Error perform http request %s", esp_err_to_name(err));
+    }
+
+    esp_http_client_cleanup(client);
+    ESP_LOGI(TAG, "Free heap after POST: %"PRIu32" bytes", esp_get_free_heap_size());
 }

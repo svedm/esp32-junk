@@ -20,6 +20,7 @@
 #include "lvgl.h"
 #include "network.h"
 #include "weather.h"
+#include "geolocation.h"
 
 static const char *TAG = "ILI9341_DEMO";
 
@@ -734,6 +735,33 @@ void print_time(void) {
     ESP_LOGI(TAG, "The current date/time in Moscow is: %s", strftime_buf);
 }
 
+void geolocation_callback(geolocation_data_t *location) {
+    ESP_LOGI(TAG, "Geolocation: Latitude=%.6f, Longitude=%.6f", location->latitude, location->longitude);
+
+    get_weather(weather_update_callback);
+}
+
+static void geolocation_task(void *pvParameter) {
+    ESP_LOGI(TAG, "Fetching geolocation based on Wi-Fi...");
+
+    wifi_ap_record_t ap_info[DEFAULT_SCAN_LIST_SIZE];
+    memset(ap_info, 0, sizeof(ap_info));
+    uint16_t number = DEFAULT_SCAN_LIST_SIZE;
+    scan_wifi(ap_info, &number);
+
+    // Small delay to ensure network stack is fully ready
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    get_geolocation(ap_info, number, geolocation_callback);
+
+    vTaskDelete(NULL);
+}
+
+void obtain_geolocation(void) {
+    // Create a separate task with 16KB stack for geolocation (TLS + POST needs more)
+    xTaskCreate(geolocation_task, "geolocation_task", 8 * 1024, NULL, 3, NULL);
+}
+
 // Task that performs network requests after Wi-Fi is ready
 static void network_request_task(void *pvParameter)
 {
@@ -744,7 +772,7 @@ static void network_request_task(void *pvParameter)
     vTaskDelay(pdMS_TO_TICKS(1000));
 
     // Get weather data
-    get_weather(weather_update_callback);
+    obtain_geolocation();
 
     vTaskDelete(NULL);
 }

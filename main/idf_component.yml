@@ -16,3 +16,4 @@ dependencies:
   #   public: true
   lvgl/lvgl: ^9.4.0
   espressif/json_parser: ^1.0.3
+  espressif/cjson: ^1.7.19

@@ -10,3 +10,11 @@ menu "Wi-Fi network configuration"
         help
             Wi-Fi network password
 endmenu
+
+menu "Google API configuration"
+    config GOOGLE_API_KEY
+        string "Google API Key"
+        default "API_KEY"
+        help
+            Google API Key for geolocation services
+endmenu

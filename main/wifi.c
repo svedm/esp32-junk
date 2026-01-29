@@ -54,6 +54,7 @@ void scan_wifi(wifi_ap_record_t* ap_info, uint16_t* number) {
         ESP_LOGI(TAG, "RSSI \t\t%d", ap_info[i].rssi);
         ESP_LOGI(TAG, "Channel \t\t%d", ap_info[i].primary);
     }
+    // ESP_ERROR_CHECK(esp_wifi_stop());
 }
 
 static void handle_disconnect(void* event_handler_arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
