@@ -530,6 +530,8 @@ static lv_timer_t *time_update_timer = NULL;
 
 // Forward declarations
 static uint32_t my_get_millis(void);
+static void refresh_weather(void);
+static void weather_task(void *pvParameter);
 
 // LVGL flush callback - called when LVGL needs to update the display
 static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *color_p)
@@ -578,17 +580,14 @@ static void lvgl_touchpad_read(lv_indev_t *indev_drv, lv_indev_data_t *data)
     }
 }
 
-// Button event handler
-static void button_event_handler(lv_event_t *e)
+// Button event handler for weather refresh
+static void refresh_btn_event_handler(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
 
     if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Button clicked!");
-    } else if (code == LV_EVENT_PRESSED) {
-        ESP_LOGI(TAG, "Button pressed");
-    } else if (code == LV_EVENT_RELEASED) {
-        ESP_LOGI(TAG, "Button released");
+        ESP_LOGI(TAG, "Refresh button clicked!");
+        refresh_weather();
     }
 }
 
@@ -652,23 +651,40 @@ static void create_weather_ui(void)
     lv_obj_center(loading_idicatior);
     lv_spinner_set_anim_params(loading_idicatior, 10000, 200);
 
+    // Refresh button
+    lv_obj_t *refresh_btn = lv_btn_create(lv_screen_active());
+    lv_obj_set_size(refresh_btn, 50, 35);
+    lv_obj_align(refresh_btn, LV_ALIGN_BOTTOM_RIGHT, -10, -10);
+    lv_obj_add_event_cb(refresh_btn, refresh_btn_event_handler, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *btn_label = lv_label_create(refresh_btn);
+    lv_label_set_text(btn_label, LV_SYMBOL_REFRESH);
+    lv_obj_center(btn_label);
+
     // Timer для обновления времени каждую секунду
     time_update_timer = lv_timer_create(update_time_label, 1000, NULL);
     update_time_label(NULL); // Сразу обновим время
 }
 
-// Callback to update weather UI
-static void weather_update_callback(weather_data_t *weather)
+// Cached weather data for async UI update
+static weather_data_t g_weather_cache = {0};
+
+// Async callback to update weather UI (runs in LVGL context)
+static void weather_ui_update_async(void *data)
 {
-    if (!weather || !weather->is_valid) {
+    (void)data;
+    weather_data_t *weather = &g_weather_cache;
+
+    if (!weather->is_valid) {
         ESP_LOGE(TAG, "Weather data is invalid");
         if (weather_label_temp) {
             lv_label_set_text(weather_label_temp, "Error loading");
         }
+        lv_obj_add_flag(loading_idicatior, LV_OBJ_FLAG_HIDDEN);
         return;
     }
 
-    ESP_LOGI(TAG, "Updating weather UI");
+    ESP_LOGI(TAG, "Updating weather UI (async)");
 
     // Update temperature with feels like
     if (weather_label_temp) {
@@ -710,6 +726,20 @@ static void weather_update_callback(weather_data_t *weather)
     }
 
     lv_obj_add_flag(loading_idicatior, LV_OBJ_FLAG_HIDDEN);
+}
+
+// Callback to update weather UI (called from weather_task context)
+static void weather_update_callback(weather_data_t *weather)
+{
+    // Copy weather data to cache
+    if (weather) {
+        memcpy(&g_weather_cache, weather, sizeof(weather_data_t));
+    } else {
+        g_weather_cache.is_valid = false;
+    }
+
+    // Schedule UI update in LVGL context
+    lv_async_call(weather_ui_update_async, NULL);
 }
 
 // Custom tick callback for LVGL - returns milliseconds since boot
@@ -767,6 +797,32 @@ void print_time(void) {
 static double g_latitude = 0;
 static double g_longitude = 0;
 static TaskHandle_t weather_task_handle = NULL;
+
+// Refresh weather data
+static void refresh_weather(void)
+{
+    // Check if coordinates are available
+    if (g_latitude == 0 && g_longitude == 0) {
+        ESP_LOGW(TAG, "No coordinates available yet, cannot refresh weather");
+        return;
+    }
+
+    // Check if weather task is already running
+    if (weather_task_handle != NULL) {
+        ESP_LOGW(TAG, "Weather update already in progress");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Refreshing weather data...");
+
+    // Show loading indicator
+    if (loading_idicatior) {
+        lv_obj_clear_flag(loading_idicatior, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // Start weather task
+    xTaskCreate(weather_task, "weather_task", 8 * 1024, NULL, 3, &weather_task_handle);
+}
 
 static void weather_task(void *pvParameter) {
     ESP_LOGI(TAG, "Weather task started");
