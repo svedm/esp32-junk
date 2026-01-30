@@ -10,6 +10,86 @@ static weather_callback_t user_callback = NULL;
 
 #define API_KEY CONFIG_GOOGLE_API_KEY
 
+// Парсинг типа погоды из weatherCondition.type
+// https://developers.google.com/maps/documentation/weather/reference/rest/v1/WeatherCondition#type
+static weather_icon_t parse_weather_type(const char *type) {
+    if (type == NULL) return WEATHER_ICON_UNKNOWN;
+
+    // Clear
+    if (strcmp(type, "CLEAR") == 0) {
+        return WEATHER_ICON_CLEAR_DAY;
+    }
+    // Mostly clear / Partly cloudy
+    if (strcmp(type, "MOSTLY_CLEAR") == 0 ||
+        strcmp(type, "PARTLY_CLOUDY") == 0) {
+        return WEATHER_ICON_PARTLY_CLOUDY_DAY;
+    }
+    // Cloudy
+    if (strcmp(type, "MOSTLY_CLOUDY") == 0 ||
+        strcmp(type, "CLOUDY") == 0) {
+        return WEATHER_ICON_CLOUDY;
+    }
+    // Light rain
+    if (strcmp(type, "LIGHT_RAIN") == 0 ||
+        strcmp(type, "LIGHT_RAIN_SHOWERS") == 0 ||
+        strcmp(type, "CHANCE_OF_SHOWERS") == 0 ||
+        strcmp(type, "SCATTERED_SHOWERS") == 0 ||
+        strcmp(type, "LIGHT_TO_MODERATE_RAIN") == 0) {
+        return WEATHER_ICON_RAIN_LIGHT;
+    }
+    // Heavy rain
+    if (strcmp(type, "RAIN") == 0 ||
+        strcmp(type, "RAIN_SHOWERS") == 0 ||
+        strcmp(type, "HEAVY_RAIN") == 0 ||
+        strcmp(type, "HEAVY_RAIN_SHOWERS") == 0 ||
+        strcmp(type, "MODERATE_TO_HEAVY_RAIN") == 0 ||
+        strcmp(type, "RAIN_PERIODICALLY_HEAVY") == 0 ||
+        strcmp(type, "WIND_AND_RAIN") == 0) {
+        return WEATHER_ICON_RAIN_HEAVY;
+    }
+    // Light snow
+    if (strcmp(type, "LIGHT_SNOW") == 0 ||
+        strcmp(type, "LIGHT_SNOW_SHOWERS") == 0 ||
+        strcmp(type, "CHANCE_OF_SNOW_SHOWERS") == 0 ||
+        strcmp(type, "SCATTERED_SNOW_SHOWERS") == 0 ||
+        strcmp(type, "LIGHT_TO_MODERATE_SNOW") == 0) {
+        return WEATHER_ICON_SNOW_LIGHT;
+    }
+    // Heavy snow
+    if (strcmp(type, "SNOW") == 0 ||
+        strcmp(type, "SNOW_SHOWERS") == 0 ||
+        strcmp(type, "HEAVY_SNOW") == 0 ||
+        strcmp(type, "HEAVY_SNOW_SHOWERS") == 0 ||
+        strcmp(type, "MODERATE_TO_HEAVY_SNOW") == 0 ||
+        strcmp(type, "SNOW_PERIODICALLY_HEAVY") == 0 ||
+        strcmp(type, "SNOWSTORM") == 0 ||
+        strcmp(type, "HEAVY_SNOW_STORM") == 0 ||
+        strcmp(type, "BLOWING_SNOW") == 0 ||
+        strcmp(type, "RAIN_AND_SNOW") == 0) {
+        return WEATHER_ICON_SNOW_HEAVY;
+    }
+    // Thunderstorm
+    if (strcmp(type, "THUNDERSTORM") == 0 ||
+        strcmp(type, "THUNDERSHOWER") == 0 ||
+        strcmp(type, "LIGHT_THUNDERSTORM_RAIN") == 0 ||
+        strcmp(type, "SCATTERED_THUNDERSTORMS") == 0 ||
+        strcmp(type, "HEAVY_THUNDERSTORM") == 0) {
+        return WEATHER_ICON_THUNDERSTORM;
+    }
+    // Hail (use rain heavy icon)
+    if (strcmp(type, "HAIL") == 0 ||
+        strcmp(type, "HAIL_SHOWERS") == 0) {
+        return WEATHER_ICON_RAIN_HEAVY;
+    }
+    // Wind
+    if (strcmp(type, "WINDY") == 0) {
+        return WEATHER_ICON_WIND;
+    }
+
+    ESP_LOGW(TAG, "Unknown weather type: '%s'", type);
+    return WEATHER_ICON_UNKNOWN;
+}
+
 // Внутренний коллбэк для обработки HTTP ответа
 static void http_response_callback(int status_code, const char *response) {
     ESP_LOGI(TAG, "HTTP Response: status=%d", status_code);
@@ -115,6 +195,16 @@ static void http_response_callback(int status_code, const char *response) {
                 weather.rain = weather.precipitation;
                 ESP_LOGI(TAG, "Precipitation: %.1f mm", weather.precipitation);
             }
+        }
+    }
+
+    // Тип погоды из weatherCondition.type
+    cJSON *weather_condition = cJSON_GetObjectItem(root, "weatherCondition");
+    if (weather_condition) {
+        cJSON *type = cJSON_GetObjectItem(weather_condition, "type");
+        if (type && cJSON_IsString(type)) {
+            weather.icon = parse_weather_type(type->valuestring);
+            ESP_LOGI(TAG, "Weather type: %s -> icon %d", type->valuestring, weather.icon);
         }
     }
 

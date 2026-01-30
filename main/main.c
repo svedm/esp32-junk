@@ -20,6 +20,7 @@
 #include "lvgl.h"
 #include "network.h"
 #include "weather.h"
+#include "weather_icons.h"
 #include "geolocation.h"
 
 static const char *TAG = "ILI9341_DEMO";
@@ -525,6 +526,7 @@ static lv_obj_t *weather_label_temp = NULL;
 static lv_obj_t *weather_label_wind = NULL;
 static lv_obj_t *weather_label_humidity = NULL;
 static lv_obj_t *weather_label_precip = NULL;
+static lv_obj_t *weather_icon_img = NULL;
 static lv_obj_t *loading_idicatior = NULL;
 static lv_timer_t *time_update_timer = NULL;
 
@@ -620,11 +622,18 @@ static void create_weather_ui(void)
     lv_obj_align(weather_label_time, LV_ALIGN_TOP_MID, 0, 10);
     lv_obj_set_style_text_color(weather_label_time, lv_color_hex(0xCCCCCC), 0);
 
-    // Temperature label
+    // Weather icon (left side)
+    weather_icon_img = lv_image_create(lv_screen_active());
+    lv_obj_align(weather_icon_img, LV_ALIGN_TOP_LEFT, 15, 55);
+    lv_obj_set_style_image_recolor(weather_icon_img, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_image_recolor_opa(weather_icon_img, LV_OPA_COVER, 0);
+    lv_obj_add_flag(weather_icon_img, LV_OBJ_FLAG_HIDDEN);
+
+    // Temperature label (right of icon)
     weather_label_temp = lv_label_create(lv_screen_active());
     lv_obj_set_style_text_font(weather_label_temp, &lv_font_montserrat_36, 0);
     lv_label_set_text(weather_label_temp, "");
-    lv_obj_align(weather_label_temp, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_align(weather_label_temp, LV_ALIGN_TOP_LEFT, 60, 45);
     lv_obj_set_style_text_color(weather_label_temp, lv_color_hex(0xFFFFFF), 0);
 
     // Wind label
@@ -686,10 +695,17 @@ static void weather_ui_update_async(void *data)
 
     ESP_LOGI(TAG, "Updating weather UI (async)");
 
+    // Update weather icon
+    if (weather_icon_img) {
+        const lv_image_dsc_t *icon = weather_get_icon(weather->icon);
+        lv_image_set_src(weather_icon_img, icon);
+        lv_obj_clear_flag(weather_icon_img, LV_OBJ_FLAG_HIDDEN);
+    }
+
     // Update temperature with feels like
     if (weather_label_temp) {
         static char temp_buf[64];
-        snprintf(temp_buf, sizeof(temp_buf), "%.0f°C (%.0f°C)",
+        snprintf(temp_buf, sizeof(temp_buf), "%.0f (%.0f)°C",
                  weather->temperature, weather->feels_like);
         lv_label_set_text(weather_label_temp, temp_buf);
     }
