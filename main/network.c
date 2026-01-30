@@ -140,15 +140,27 @@ void http_get(const char *url, http_response_callback_t callback)
         .status_code = 0
     };
 
+    // Проверяем, нужно ли пропустить верификацию сертификата
+    // weather.googleapis.com использует сертификат, которого нет в стандартном bundle
+    bool skip_cert = (strstr(url, "weather.googleapis.com") != NULL);
+
     esp_http_client_config_t config = {
         .url = url,
         .event_handler = _http_event_handler,
         .user_data = &user_data,
         .skip_cert_common_name_check = true,
-        .crt_bundle_attach = esp_crt_bundle_attach
+        .crt_bundle_attach = skip_cert ? NULL : esp_crt_bundle_attach,
+        .timeout_ms = 30000,
+        .buffer_size = 4096,
+        .buffer_size_tx = 2048,
     };
 
+    if (skip_cert) {
+        ESP_LOGW(TAG, "Skipping certificate verification for %s", url);
+    }
+
     ESP_LOGI(TAG, "HTTPS GET request to %s", url);
+
     esp_http_client_handle_t client = esp_http_client_init(&config);
     esp_err_t err = esp_http_client_perform(client);
 
@@ -158,6 +170,10 @@ void http_get(const char *url, http_response_callback_t callback)
                 esp_http_client_get_content_length(client));
     } else {
         ESP_LOGE(TAG, "Error perform http request %s", esp_err_to_name(err));
+        // Вызываем callback с ошибкой
+        if (callback) {
+            callback(0, NULL);
+        }
     }
 
     esp_http_client_cleanup(client);

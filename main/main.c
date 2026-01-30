@@ -520,11 +520,13 @@ static ili9341_t lcd;
 static xpt2046_t touch;
 
 // LVGL weather UI objects
+static lv_obj_t *weather_label_time = NULL;
 static lv_obj_t *weather_label_temp = NULL;
 static lv_obj_t *weather_label_wind = NULL;
 static lv_obj_t *weather_label_humidity = NULL;
 static lv_obj_t *weather_label_precip = NULL;
 static lv_obj_t *loading_idicatior = NULL;
+static lv_timer_t *time_update_timer = NULL;
 
 // Forward declarations
 static uint32_t my_get_millis(void);
@@ -590,17 +592,40 @@ static void button_event_handler(lv_event_t *e)
     }
 }
 
+// Обновление времени на экране
+static void update_time_label(lv_timer_t *timer)
+{
+    (void)timer;
+    if (!weather_label_time) return;
+
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+
+    static char time_buf[32];
+    strftime(time_buf, sizeof(time_buf), "%H:%M  %d.%m", &timeinfo);
+    lv_label_set_text(weather_label_time, time_buf);
+}
+
 // Create weather UI
 static void create_weather_ui(void)
 {
-    // Set dark blue background
+    // Set dark background
     lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x383838), 0);
+
+    // Time label (top)
+    weather_label_time = lv_label_create(lv_screen_active());
+    lv_obj_set_style_text_font(weather_label_time, &lv_font_montserrat_20, 0);
+    lv_label_set_text(weather_label_time, "--:--");
+    lv_obj_align(weather_label_time, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_set_style_text_color(weather_label_time, lv_color_hex(0xCCCCCC), 0);
 
     // Temperature label
     weather_label_temp = lv_label_create(lv_screen_active());
-    lv_obj_set_style_text_font(weather_label_temp, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(weather_label_temp, &lv_font_montserrat_36, 0);
     lv_label_set_text(weather_label_temp, "");
-    lv_obj_align(weather_label_temp, LV_ALIGN_TOP_MID, 10, 50);
+    lv_obj_align(weather_label_temp, LV_ALIGN_TOP_MID, 0, 40);
     lv_obj_set_style_text_color(weather_label_temp, lv_color_hex(0xFFFFFF), 0);
 
     // Wind label
@@ -622,11 +647,14 @@ static void create_weather_ui(void)
     lv_obj_set_style_text_color(weather_label_precip, lv_color_hex(0xFFFFFF), 0);
 
     // Loading indicator
-
     loading_idicatior = lv_spinner_create(lv_screen_active());
     lv_obj_set_size(loading_idicatior, 100, 100);
     lv_obj_center(loading_idicatior);
     lv_spinner_set_anim_params(loading_idicatior, 10000, 200);
+
+    // Timer для обновления времени каждую секунду
+    time_update_timer = lv_timer_create(update_time_label, 1000, NULL);
+    update_time_label(NULL); // Сразу обновим время
 }
 
 // Callback to update weather UI
@@ -642,10 +670,11 @@ static void weather_update_callback(weather_data_t *weather)
 
     ESP_LOGI(TAG, "Updating weather UI");
 
-    // Update temperature
+    // Update temperature with feels like
     if (weather_label_temp) {
         static char temp_buf[64];
-        snprintf(temp_buf, sizeof(temp_buf), "%.1fC", weather->temperature);
+        snprintf(temp_buf, sizeof(temp_buf), "%.0f°C (%.0f°C)",
+                 weather->temperature, weather->feels_like);
         lv_label_set_text(weather_label_temp, temp_buf);
     }
 
@@ -735,10 +764,27 @@ void print_time(void) {
     ESP_LOGI(TAG, "The current date/time in Moscow is: %s", strftime_buf);
 }
 
+static double g_latitude = 0;
+static double g_longitude = 0;
+static TaskHandle_t weather_task_handle = NULL;
+
+static void weather_task(void *pvParameter) {
+    ESP_LOGI(TAG, "Weather task started");
+
+    vTaskDelay(pdMS_TO_TICKS(500)); // Даём время завершиться предыдущему HTTP запросу
+
+    get_weather(g_latitude, g_longitude, weather_update_callback);
+    weather_task_handle = NULL;
+    vTaskDelete(NULL);
+}
+
 void geolocation_callback(geolocation_data_t *location) {
     ESP_LOGI(TAG, "Geolocation: Latitude=%.6f, Longitude=%.6f", location->latitude, location->longitude);
 
-    get_weather(weather_update_callback);
+    // Сохраняем координаты и запускаем погоду в отдельной задаче
+    g_latitude = location->latitude;
+    g_longitude = location->longitude;
+    xTaskCreate(weather_task, "weather_task", 8 * 1024, NULL, 3, &weather_task_handle);
 }
 
 static void geolocation_task(void *pvParameter) {
