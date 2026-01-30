@@ -520,6 +520,9 @@ static void display_update_task(void *pvParameters)
 static ili9341_t lcd;
 static xpt2046_t touch;
 
+// LVGL menu objects
+static lv_obj_t *menu = NULL;
+
 // LVGL weather UI objects
 static lv_obj_t *weather_label_time = NULL;
 static lv_obj_t *weather_label_temp = NULL;
@@ -534,6 +537,8 @@ static lv_timer_t *time_update_timer = NULL;
 static uint32_t my_get_millis(void);
 static void refresh_weather(void);
 static void weather_task(void *pvParameter);
+static void create_weather_ui(lv_obj_t *parent);
+static void create_main_menu(void);
 
 // LVGL flush callback - called when LVGL needs to update the display
 static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *color_p)
@@ -609,59 +614,59 @@ static void update_time_label(lv_timer_t *timer)
     lv_label_set_text(weather_label_time, time_buf);
 }
 
-// Create weather UI
-static void create_weather_ui(void)
+// Create weather UI on a given parent object
+static void create_weather_ui(lv_obj_t *parent)
 {
     // Set dark background
-    lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x383838), 0);
+    lv_obj_set_style_bg_color(parent, lv_color_hex(0x383838), 0);
 
     // Time label (top)
-    weather_label_time = lv_label_create(lv_screen_active());
+    weather_label_time = lv_label_create(parent);
     lv_obj_set_style_text_font(weather_label_time, &lv_font_montserrat_20, 0);
     lv_label_set_text(weather_label_time, "--:--");
     lv_obj_align(weather_label_time, LV_ALIGN_TOP_MID, 0, 10);
     lv_obj_set_style_text_color(weather_label_time, lv_color_hex(0xCCCCCC), 0);
 
     // Weather icon (left side)
-    weather_icon_img = lv_image_create(lv_screen_active());
+    weather_icon_img = lv_image_create(parent);
     lv_obj_align(weather_icon_img, LV_ALIGN_TOP_LEFT, 15, 55);
     lv_obj_set_style_image_recolor(weather_icon_img, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_image_recolor_opa(weather_icon_img, LV_OPA_COVER, 0);
     lv_obj_add_flag(weather_icon_img, LV_OBJ_FLAG_HIDDEN);
 
     // Temperature label (right of icon)
-    weather_label_temp = lv_label_create(lv_screen_active());
+    weather_label_temp = lv_label_create(parent);
     lv_obj_set_style_text_font(weather_label_temp, &lv_font_montserrat_36, 0);
     lv_label_set_text(weather_label_temp, "");
     lv_obj_align(weather_label_temp, LV_ALIGN_TOP_LEFT, 60, 45);
     lv_obj_set_style_text_color(weather_label_temp, lv_color_hex(0xFFFFFF), 0);
 
     // Wind label
-    weather_label_wind = lv_label_create(lv_screen_active());
+    weather_label_wind = lv_label_create(parent);
     lv_label_set_text(weather_label_wind, "");
     lv_obj_align(weather_label_wind, LV_ALIGN_TOP_LEFT, 10, 120);
     lv_obj_set_style_text_color(weather_label_wind, lv_color_hex(0xFFFFFF), 0);
 
     // Humidity label
-    weather_label_humidity = lv_label_create(lv_screen_active());
+    weather_label_humidity = lv_label_create(parent);
     lv_label_set_text(weather_label_humidity, "");
     lv_obj_align(weather_label_humidity, LV_ALIGN_TOP_LEFT, 10, 150);
     lv_obj_set_style_text_color(weather_label_humidity, lv_color_hex(0xFFFFFF), 0);
 
     // Precipitation label
-    weather_label_precip = lv_label_create(lv_screen_active());
+    weather_label_precip = lv_label_create(parent);
     lv_label_set_text(weather_label_precip, "");
     lv_obj_align(weather_label_precip, LV_ALIGN_TOP_LEFT, 10, 180);
     lv_obj_set_style_text_color(weather_label_precip, lv_color_hex(0xFFFFFF), 0);
 
     // Loading indicator
-    loading_idicatior = lv_spinner_create(lv_screen_active());
+    loading_idicatior = lv_spinner_create(parent);
     lv_obj_set_size(loading_idicatior, 100, 100);
     lv_obj_center(loading_idicatior);
     lv_spinner_set_anim_params(loading_idicatior, 10000, 200);
 
     // Refresh button
-    lv_obj_t *refresh_btn = lv_btn_create(lv_screen_active());
+    lv_obj_t *refresh_btn = lv_btn_create(parent);
     lv_obj_set_size(refresh_btn, 50, 35);
     lv_obj_align(refresh_btn, LV_ALIGN_BOTTOM_RIGHT, -10, -10);
     lv_obj_add_event_cb(refresh_btn, refresh_btn_event_handler, LV_EVENT_CLICKED, NULL);
@@ -901,6 +906,64 @@ void on_wifi_ready(void) {
     xTaskCreate(network_request_task, "network_req", 4096, NULL, 3, NULL);
 }
 
+// Create main menu
+static void create_main_menu(void)
+{
+    menu = lv_menu_create(lv_screen_active());
+    lv_obj_set_size(menu, lv_pct(100), lv_pct(100));
+    lv_obj_center(menu);
+
+    // Set dark background and white text for menu
+    lv_obj_set_style_bg_color(menu, lv_color_hex(0x383838), 0);
+    lv_obj_set_style_text_color(menu, lv_color_hex(0xFFFFFF), 0);
+
+    // Configure header and back button styles
+    lv_obj_t *header = lv_menu_get_main_header(menu);
+    lv_obj_set_style_bg_color(header, lv_color_hex(0x383838), 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(0xFFFFFF), 0);
+
+    lv_obj_t *back_btn = lv_menu_get_main_header_back_button(menu);
+    lv_obj_set_style_text_color(back_btn, lv_color_hex(0xFFFFFF), 0);
+
+    // Create main page
+    lv_obj_t *main_page = lv_menu_page_create(menu, NULL);
+    lv_obj_set_style_bg_color(main_page, lv_color_hex(0x383838), 0);
+
+    // Create section for main menu items
+    lv_obj_t *section = lv_menu_section_create(main_page);
+    lv_obj_set_style_bg_color(section, lv_color_hex(0x666666), 0);
+
+    // Create weather sub-page
+    lv_obj_t *weather_page = lv_menu_page_create(menu, "Weather");
+    lv_obj_set_style_bg_color(weather_page, lv_color_hex(0x383838), 0);
+    lv_obj_set_style_text_color(weather_page, lv_color_hex(0xFFFFFF), 0);
+
+    // Get the content area of the weather page
+    lv_obj_t *weather_content = lv_menu_cont_create(weather_page);
+    lv_obj_set_size(weather_content, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(weather_content, lv_color_hex(0x383838), 0);
+    lv_obj_set_flex_grow(weather_content, 1);
+
+    // Disable flex layout to allow absolute positioning
+    lv_obj_set_layout(weather_content, LV_LAYOUT_NONE);
+    lv_obj_set_style_pad_all(weather_content, 0, 0);
+
+    // Create weather UI inside the weather content
+    create_weather_ui(weather_content);
+
+    // Create menu item for weather on main page
+    lv_obj_t *weather_btn = lv_menu_cont_create(section);
+    lv_obj_t *weather_label = lv_label_create(weather_btn);
+    lv_label_set_text(weather_label, "Weather");
+    lv_obj_set_style_text_color(weather_label, lv_color_hex(0xFFFFFF), 0);
+    lv_menu_set_load_page_event(menu, weather_btn, weather_page);
+
+    // Set main page as the initial page
+    lv_menu_set_page(menu, main_page);
+
+    ESP_LOGI(TAG, "Main menu created");
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Starting LVGL Demo with ILI9341 and XPT2046");
@@ -969,10 +1032,10 @@ void app_main(void)
 
     ESP_LOGI(TAG, "LVGL input device initialized");
 
-    // Create the weather UI
-    create_weather_ui();
+    // Create the main menu
+    create_main_menu();
 
-    ESP_LOGI(TAG, "Weather UI created");
+    ESP_LOGI(TAG, "Main menu created");
 
     // Create LVGL task with larger stack (8KB instead of 4KB)
     xTaskCreate(lvgl_task, "lvgl_task", 8192, NULL, 5, NULL);
