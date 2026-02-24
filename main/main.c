@@ -22,6 +22,7 @@
 #include "weather.h"
 #include "weather_icons.h"
 #include "geolocation.h"
+#include "scd41.h"
 
 static const char *TAG = "ILI9341_DEMO";
 
@@ -533,6 +534,12 @@ static lv_obj_t *weather_icon_img = NULL;
 static lv_obj_t *loading_idicatior = NULL;
 static lv_timer_t *time_update_timer = NULL;
 
+// LVGL air quality UI objects
+static lv_obj_t *air_label_co2 = NULL;
+static lv_obj_t *air_label_temp = NULL;
+static lv_obj_t *air_label_humidity = NULL;
+static lv_timer_t *air_update_timer = NULL;
+
 // Forward declarations
 static uint32_t my_get_millis(void);
 static void refresh_weather(void);
@@ -596,6 +603,37 @@ static void refresh_btn_event_handler(lv_event_t *e)
         ESP_LOGI(TAG, "Refresh button clicked!");
         refresh_weather();
     }
+}
+
+// Forward declarations
+static void start_weather_loading(void);
+static void wifi_task(void *pvParameter);
+
+// Flag: weather loading has been started
+static bool weather_loading_started = false;
+
+// Event handler for weather page open
+static void weather_page_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_CLICKED && !weather_loading_started) {
+        ESP_LOGI(TAG, "Weather page opened, starting Wi-Fi and weather loading...");
+        weather_loading_started = true;
+        start_weather_loading();
+    }
+}
+
+// Start weather loading (Wi-Fi -> geolocation -> weather)
+static void start_weather_loading(void)
+{
+    // Show loading indicator
+    if (loading_idicatior) {
+        lv_obj_clear_flag(loading_idicatior, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // Start Wi-Fi connection (chain: Wi-Fi ready -> geolocation -> weather)
+    xTaskCreate(wifi_task, "wifi_task", 4096, NULL, 3, NULL);
 }
 
 // Обновление времени на экране
@@ -858,7 +896,7 @@ static void weather_task(void *pvParameter) {
 void geolocation_callback(geolocation_data_t *location) {
     ESP_LOGI(TAG, "Geolocation: Latitude=%.6f, Longitude=%.6f", location->latitude, location->longitude);
 
-    // Сохраняем координаты и запускаем погоду в отдельной задаче
+    // Сохраняем координаты и запускаем погоду
     g_latitude = location->latitude;
     g_longitude = location->longitude;
     xTaskCreate(weather_task, "weather_task", 8 * 1024, NULL, 3, &weather_task_handle);
@@ -904,6 +942,84 @@ static void network_request_task(void *pvParameter)
 void on_wifi_ready(void) {
     // Create a separate task for network requests to avoid blocking the event handler
     xTaskCreate(network_request_task, "network_req", 4096, NULL, 3, NULL);
+}
+
+// Update air quality labels from SCD41
+static void update_air_quality(lv_timer_t *timer)
+{
+    (void)timer;
+    scd41_data_t data = scd41_get_data();
+    if (!data.valid) {
+        return;
+    }
+
+    if (air_label_co2) {
+        static char buf[32];
+        snprintf(buf, sizeof(buf), "%u ppm", data.co2_ppm);
+        lv_label_set_text(air_label_co2, buf);
+
+        // Color CO2 level: green < 800, yellow 800-1200, red > 1200
+        lv_color_t color;
+        if (data.co2_ppm < 800) {
+            color = lv_color_hex(0x4CAF50);
+        } else if (data.co2_ppm < 1200) {
+            color = lv_color_hex(0xFFC107);
+        } else {
+            color = lv_color_hex(0xF44336);
+        }
+        lv_obj_set_style_text_color(air_label_co2, color, 0);
+    }
+
+    if (air_label_temp) {
+        static char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f C", data.temperature_m_deg_c / 1000.0f);
+        lv_label_set_text(air_label_temp, buf);
+    }
+
+    if (air_label_humidity) {
+        static char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f %%RH", data.humidity_m_percent_rh / 1000.0f);
+        lv_label_set_text(air_label_humidity, buf);
+    }
+}
+
+// Create air quality UI on a given parent object
+static void create_air_quality_ui(lv_obj_t *parent)
+{
+    lv_obj_set_style_bg_color(parent, lv_color_hex(0x383838), 0);
+    lv_obj_set_layout(parent, LV_LAYOUT_NONE);
+    lv_obj_set_style_pad_all(parent, 0, 0);
+
+    // Title
+    lv_obj_t *title = lv_label_create(parent);
+    lv_label_set_text(title, "CO2");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(0xCCCCCC), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+
+    // CO2 value (large)
+    air_label_co2 = lv_label_create(parent);
+    lv_label_set_text(air_label_co2, "-- ppm");
+    lv_obj_set_style_text_font(air_label_co2, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_color(air_label_co2, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_align(air_label_co2, LV_ALIGN_TOP_MID, 0, 45);
+
+    // Temperature
+    air_label_temp = lv_label_create(parent);
+    lv_label_set_text(air_label_temp, "-- C");
+    lv_obj_set_style_text_font(air_label_temp, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(air_label_temp, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_align(air_label_temp, LV_ALIGN_TOP_LEFT, 15, 120);
+
+    // Humidity
+    air_label_humidity = lv_label_create(parent);
+    lv_label_set_text(air_label_humidity, "-- %RH");
+    lv_obj_set_style_text_font(air_label_humidity, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(air_label_humidity, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_align(air_label_humidity, LV_ALIGN_TOP_LEFT, 15, 155);
+
+    // Timer to update values every 5 seconds
+    air_update_timer = lv_timer_create(update_air_quality, 5000, NULL);
 }
 
 // Create main menu
@@ -957,6 +1073,26 @@ static void create_main_menu(void)
     lv_label_set_text(weather_label, "Weather");
     lv_obj_set_style_text_color(weather_label, lv_color_hex(0xFFFFFF), 0);
     lv_menu_set_load_page_event(menu, weather_btn, weather_page);
+    lv_obj_add_event_cb(weather_btn, weather_page_event_handler, LV_EVENT_CLICKED, NULL);
+
+    // Create air quality sub-page
+    lv_obj_t *air_page = lv_menu_page_create(menu, "Air Quality");
+    lv_obj_set_style_bg_color(air_page, lv_color_hex(0x383838), 0);
+    lv_obj_set_style_text_color(air_page, lv_color_hex(0xFFFFFF), 0);
+
+    lv_obj_t *air_content = lv_menu_cont_create(air_page);
+    lv_obj_set_size(air_content, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(air_content, lv_color_hex(0x383838), 0);
+    lv_obj_set_flex_grow(air_content, 1);
+
+    create_air_quality_ui(air_content);
+
+    // Create menu item for air quality on main page
+    lv_obj_t *air_btn = lv_menu_cont_create(section);
+    lv_obj_t *air_label = lv_label_create(air_btn);
+    lv_label_set_text(air_label, "Air Quality");
+    lv_obj_set_style_text_color(air_label, lv_color_hex(0xFFFFFF), 0);
+    lv_menu_set_load_page_event(menu, air_btn, air_page);
 
     // Set main page as the initial page
     lv_menu_set_page(menu, main_page);
@@ -1042,7 +1178,11 @@ void app_main(void)
 
     ESP_LOGI(TAG, "LVGL initialization complete!");
 
-    // Wi-Fi
+    // Wi-Fi будет запущен при открытии страницы Weather
     wifi_set_ready_callback(on_wifi_ready);
-    xTaskCreate(wifi_task, "wifi_task", 4096, NULL, 3, NULL);
+
+    // Initialize SCD41 CO2 sensor
+    if (scd41_init() == ESP_OK) {
+        scd41_start();
+    }
 }

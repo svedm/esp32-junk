@@ -1,0 +1,26 @@
+menu "SCD41 Sensor Configuration"
+    config SCD41_I2C_SDA_PIN
+        int "I2C SDA GPIO"
+        default 36
+        help
+            GPIO pin for I2C SDA line connected to SCD41
+
+    config SCD41_I2C_SCL_PIN
+        int "I2C SCL GPIO"
+        default 35
+        help
+            GPIO pin for I2C SCL line connected to SCD41
+
+    config SCD41_I2C_FREQ_HZ
+        int "I2C frequency (Hz)"
+        default 100000
+        help
+            I2C bus clock frequency. SCD41 supports up to 100 kHz.
+
+    config SCD41_MEASUREMENT_INTERVAL_MS
+        int "Measurement polling interval (ms)"
+        default 5000
+        help
+            How often to poll the sensor for new data.
+            SCD41 periodic measurement updates every 5 seconds.
+endmenu
